@@ -67,3 +67,25 @@ vcpkg_installed/
 # test output & cache
 Testing/
 .cache/
+
+# PlatformIO
+.pio/
+.pioenvs/
+.piolibdeps/
+.clang_complete
+.gcc-flags.json
+
+# Firmware build output
+# build/ is covered by the "Build directories" rule above and stays untracked;
+# published versions are copied to release/, which is tracked on purpose.
+
+# Python tooling in scripts/
+__pycache__/
+*.py[cod]
+
+# Editors / IDE
+.vscode/
+.idea/
+
+# macOS
+.DS_Store
