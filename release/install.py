@@ -68,7 +68,10 @@ def main() -> None:
     common.info("Installation finished")
 
     if args.monitor:
-        monitor_port = common.wait_for_port(port)
+        # Not wait_for_port(port): the port just flashed may have been the ROM
+        # bootloader's interface, and the running firmware enumerates as its own
+        # USB device under a different name.
+        monitor_port = common.wait_for_app_port(timeout=20.0)
         if monitor_port is None:
             common.info("Device did not re-appear, skipping the serial monitor")
             return

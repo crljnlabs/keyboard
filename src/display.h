@@ -1,0 +1,51 @@
+// The TFT panel.
+
+#pragma once
+
+#include <Arduino.h>
+#include <TFT_eSPI.h>
+
+// Owns the ST7789 panel, its orientation, its backlight and the usable drawing
+// area.
+//
+// Deliberately thin: it brings the panel up and hands out the TFT_eSPI instance
+// for drawing. What is shown lives in the screen that draws it, so a new screen
+// never has to touch this class.
+//
+// The SPI pins, the driver and the panel geometry are compile-time settings of
+// TFT_eSPI and live in platformio.ini. Orientation, backlight and safe area are
+// runtime concerns and belong here.
+class Display {
+ public:
+  void begin();
+
+  // 0 = off, 255 = full brightness.
+  void setBrightness(uint8_t brightness);
+  uint8_t brightness() const { return brightness_; }
+
+  // Ramps the backlight to `target` over `durationMs`, blocking. Used for the
+  // fade-in at boot, which doubles as a visible "firmware is alive" signal.
+  void fadeBrightness(uint8_t target, uint16_t durationMs);
+
+  TFT_eSPI& tft() { return tft_; }
+
+  int16_t width() { return tft_.width(); }
+  int16_t height() { return tft_.height(); }
+
+  // --- safe area -------------------------------------------------------------
+  // The panel's glass has rounded corners, so the outermost pixels of the
+  // rectangle are not all visible. Everything that has to be readable belongs
+  // inside the safe area; only decoration may reach past it.
+  static constexpr int16_t kSafeInset = 14;
+
+  int16_t safeLeft() const { return kSafeInset; }
+  int16_t safeTop() const { return kSafeInset; }
+  int16_t safeWidth() { return width() - 2 * kSafeInset; }
+  int16_t safeHeight() { return height() - 2 * kSafeInset; }
+  int16_t safeRight() { return width() - kSafeInset; }
+  int16_t safeBottom() { return height() - kSafeInset; }
+
+ private:
+  TFT_eSPI tft_;
+  uint8_t brightness_ = 0;
+};
