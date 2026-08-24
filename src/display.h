@@ -32,6 +32,21 @@ class Display {
   int16_t width() { return tft_.width(); }
   int16_t height() { return tft_.height(); }
 
+  // --- geometry --------------------------------------------------------------
+  // Landscape, pin header on the right hand side of the image: the module plugs
+  // into a vertical header at the right edge of the board and its panel extends
+  // leftwards, so the 280 pixel axis runs horizontally. Change this single value
+  // if the module is ever mounted the other way round - 1 is the same landscape
+  // mirrored, 0 and 2 are the two portrait orientations.
+  static constexpr uint8_t kRotation = 3;
+
+  // The panel as the firmware addresses it, i.e. after kRotation was applied.
+  // TFT_WIDTH and TFT_HEIGHT describe the panel unrotated, so the odd rotations
+  // swap them. Kept here rather than written out twice, because the USB
+  // capability block reports the same numbers to the PC.
+  static constexpr int16_t kWidth = (kRotation % 2 == 1) ? TFT_HEIGHT : TFT_WIDTH;
+  static constexpr int16_t kHeight = (kRotation % 2 == 1) ? TFT_WIDTH : TFT_HEIGHT;
+
   // --- safe area -------------------------------------------------------------
   // The panel's glass has rounded corners, so the outermost pixels of the
   // rectangle are not all visible. Everything that has to be readable belongs

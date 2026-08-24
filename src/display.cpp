@@ -21,13 +21,6 @@ constexpr uint8_t kBacklightResolutionBits = 8;
 // enough to be unmistakably lit in a normally lit room.
 constexpr uint8_t kAliveBrightness = 40;
 
-// Landscape, pin header on the right hand side of the image: the display module
-// plugs into a vertical header at the right edge of the board and its panel
-// extends leftwards over it, so the 280 pixel axis runs horizontally. Change
-// this single value if the module is ever mounted the other way round - 1 is the
-// same landscape mirrored, 0 and 2 are the two portrait orientations.
-constexpr uint8_t kRotation = 3;
-
 }  // namespace
 
 void Display::begin() {
@@ -39,7 +32,7 @@ void Display::begin() {
   setBrightness(kAliveBrightness);
 
   tft_.init();
-  tft_.setRotation(kRotation);
+  tft_.setRotation(Display::kRotation);
   tft_.fillScreen(TFT_BLACK);
 }
 
