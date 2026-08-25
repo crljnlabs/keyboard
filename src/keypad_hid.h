@@ -1,12 +1,20 @@
 // The USB HID interface: how the PC learns what this device is, and how key and
 // encoder activity reaches it.
 //
-// The device is one vendor-defined application collection, so no operating system
-// claims it and no key press is injected into the focused window. Inside that
-// collection every item uses a standard usage, so software that has never heard
-// of this device can still tell the six keys and the encoder apart.
+// Nothing here may be claimed by an operating system driver: a key press is for
+// anydeck to act on, not for the focused window to receive. What decides that is
+// the usage of every *collection* in the report descriptor, not only of the
+// outermost one. macOS publishes one DeviceUsagePair per application and per
+// physical collection, and its drivers match against that whole list - so a
+// vendor-defined application collection hides nothing that is named with a
+// standard usage inside it. Every collection here is therefore vendor defined.
 //
-// The byte layouts are specified in ../../hid.md; this file implements them.
+// The items *within* those collections do use standard usages - buttons on the
+// button page, the encoder as a dial - because they are not matching surface on
+// macOS, and because it lets software that has never heard of this device tell
+// the six keys and the encoder apart. Linux is less careful about this and maps
+// such items to input events regardless of the collection around them; moving
+// them to vendor usages too is what that would take.
 
 #pragma once
 

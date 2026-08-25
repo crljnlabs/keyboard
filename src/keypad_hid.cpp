@@ -20,44 +20,58 @@ const uint8_t kReportDescriptor[] = {
     0x85, kReportInput,  //   Report ID (1)
 
     // --- the six keys, one part per button ---------------------------------
-    0x05, 0x01,  //   Usage Page (Generic Desktop)
-    0x09, 0x07,  //   Usage (Keypad) - names the group
-    0xA1, 0x00,  //   Collection (Physical)
-    0x05, 0x09,  //     Usage Page (Button)
-    0x19, 0x01,  //     Usage Minimum (Button 1)
-    0x29, 0x06,  //     Usage Maximum (Button 6)
-    0x15, 0x00,  //     Logical Minimum (0)
-    0x25, 0x01,  //     Logical Maximum (1)
-    0x75, 0x01,  //     Report Size (1)
-    0x95, 0x06,  //     Report Count (6)
-    0x81, 0x02,  //     Input (Data, Variable, Absolute)
-    0x75, 0x02,  //     Report Size (2)
-    0x95, 0x01,  //     Report Count (1)
-    0x81, 0x03,  //     Input (Constant) - padding to a byte
-    0xC0,        //   End Collection
+    // The group is named with a vendor usage, not with Generic Desktop's
+    // "Keypad". A collection's usage is not private to the collection: macOS
+    // publishes one DeviceUsagePair per Application *and* Physical collection in
+    // the descriptor, and its HID Keyboard Driver matches on Generic Desktop
+    // usages 0x06 Keyboard, 0x07 Keypad, 0x08 Multi-axis and 0x80 System
+    // Control. Naming this group "Keypad" therefore handed the device to that
+    // driver - which then turned the buttons below into pointer clicks in the
+    // focused window - even though the enclosing application collection is
+    // vendor defined. Nothing else in the descriptor is enough to match, so a
+    // vendor usage here is what keeps the operating system out.
+    0x06, 0x00, 0xFF,  //   Usage Page (Vendor Defined 0xFF00)
+    0x09, 0x02,        //   Usage (0x02) - names the group
+    0xA1, 0x00,        //   Collection (Physical)
+    0x05, 0x09,        //     Usage Page (Button)
+    0x19, 0x01,        //     Usage Minimum (Button 1)
+    0x29, 0x06,        //     Usage Maximum (Button 6)
+    0x15, 0x00,        //     Logical Minimum (0)
+    0x25, 0x01,        //     Logical Maximum (1)
+    0x75, 0x01,        //     Report Size (1)
+    0x95, 0x06,        //     Report Count (6)
+    0x81, 0x02,        //     Input (Data, Variable, Absolute)
+    0x75, 0x02,        //     Report Size (2)
+    0x95, 0x01,        //     Report Count (1)
+    0x81, 0x03,        //     Input (Constant) - padding to a byte
+    0xC0,              //   End Collection
 
     // --- the encoder: dial and click are one part --------------------------
-    0x05, 0x01,  //   Usage Page (Generic Desktop)
-    0x09, 0x37,  //   Usage (Dial) - names the group
-    0xA1, 0x00,  //   Collection (Physical)
-    0x05, 0x09,  //     Usage Page (Button)
-    0x09, 0x07,  //     Usage (Button 7) - the click
-    0x15, 0x00,  //     Logical Minimum (0)
-    0x25, 0x01,  //     Logical Maximum (1)
-    0x75, 0x01,  //     Report Size (1)
-    0x95, 0x01,  //     Report Count (1)
-    0x81, 0x02,  //     Input (Data, Variable, Absolute)
-    0x75, 0x07,  //     Report Size (7)
-    0x95, 0x01,  //     Report Count (1)
-    0x81, 0x03,  //     Input (Constant) - padding to a byte
-    0x05, 0x01,  //     Usage Page (Generic Desktop)
-    0x09, 0x37,  //     Usage (Dial)
-    0x15, 0x81,  //     Logical Minimum (-127)
-    0x25, 0x7F,  //     Logical Maximum (127)
-    0x75, 0x08,  //     Report Size (8)
-    0x95, 0x01,  //     Report Count (1)
-    0x81, 0x06,  //     Input (Data, Variable, Relative)
-    0xC0,        //   End Collection
+    // A vendor usage again, for the reason above. Generic Desktop's "Dial" is
+    // not one of the four the keyboard driver claims, but a collection usage is
+    // matching surface either way, and the two groups should not differ in how
+    // careful they are.
+    0x06, 0x00, 0xFF,  //   Usage Page (Vendor Defined 0xFF00)
+    0x09, 0x03,        //   Usage (0x03) - names the group
+    0xA1, 0x00,        //   Collection (Physical)
+    0x05, 0x09,        //     Usage Page (Button)
+    0x09, 0x07,        //     Usage (Button 7) - the click
+    0x15, 0x00,        //     Logical Minimum (0)
+    0x25, 0x01,        //     Logical Maximum (1)
+    0x75, 0x01,        //     Report Size (1)
+    0x95, 0x01,        //     Report Count (1)
+    0x81, 0x02,        //     Input (Data, Variable, Absolute)
+    0x75, 0x07,        //     Report Size (7)
+    0x95, 0x01,        //     Report Count (1)
+    0x81, 0x03,        //     Input (Constant) - padding to a byte
+    0x05, 0x01,        //     Usage Page (Generic Desktop)
+    0x09, 0x37,        //     Usage (Dial)
+    0x15, 0x81,        //     Logical Minimum (-127)
+    0x25, 0x7F,        //     Logical Maximum (127)
+    0x75, 0x08,        //     Report Size (8)
+    0x95, 0x01,        //     Report Count (1)
+    0x81, 0x06,        //     Input (Data, Variable, Relative)
+    0xC0,              //   End Collection
 
     // --- what the descriptor cannot express: the display -------------------
     0x85, kReportCapabilities,  //   Report ID (0x10)
