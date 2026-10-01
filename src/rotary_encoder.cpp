@@ -50,10 +50,13 @@ void RotaryEncoder::begin() {
   pinMode(pins::kEncoderB, INPUT_PULLUP);
   button_.begin(pins::kEncoderButton);
 
-  // Start from the levels the encoder currently rests at, otherwise the first
-  // turn away from a non-zero resting position is discarded.
-  state_ = sampleLevels();
-  state_ &= kStateMask;
+  // Start from the table's resting state, not from the pin levels. The two are
+  // different things that happen to share numbers: at a detent both lines are
+  // high, which is level 3 - and 3 in the table is kCwNext, a clockwise turn
+  // already under way. Started there, the first counter-clockwise detent after
+  // power-up read as that turn being undone, and was dropped. kStart is where
+  // the table rests between detents, whatever the lines read.
+  state_ = kStart;
 
   attachInterruptArg(digitalPinToInterrupt(pins::kEncoderA), onQuadratureEdge, this, CHANGE);
   attachInterruptArg(digitalPinToInterrupt(pins::kEncoderB), onQuadratureEdge, this, CHANGE);
