@@ -2,7 +2,7 @@
 """Flash a published firmware release onto a connected board.
 
 Releases live next to this script as release/<version>/ and are created by
-scripts/build.py. Without arguments the newest release is installed.
+scripts/deploy.py. Without arguments the newest release is installed.
 
 Usage:
     python3 release/install.py                 # newest release
@@ -38,7 +38,7 @@ def main() -> None:
 
     versions = common.list_versions(common.RELEASE_DIR)
     if not versions:
-        common.fail(f"No releases found in {common.RELEASE_DIR}. Create one with scripts/build.py.")
+        common.fail(f"No releases found in {common.RELEASE_DIR}. Create one with scripts/deploy.py.")
 
     if args.list:
         common.info("Available releases (newest last):")
