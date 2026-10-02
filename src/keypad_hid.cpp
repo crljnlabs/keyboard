@@ -214,8 +214,15 @@ void KeypadHid::update() {
       static_cast<uint8_t>(encoderButton_ ? 1 : 0),
       static_cast<uint8_t>(static_cast<int8_t>(rotation)),
   };
-  if (!hid_.SendReport(kReportInput, payload, sizeof(payload))) {
-    return;  // host not ready; keep the state and try again next pass
+  // Queued is sent. tud_hid_n_report() hands the report to the endpoint and
+  // returns at once; it fails only when the endpoint is still busy or the host
+  // is not listening, and then nothing went out. USBHID::SendReport() wraps the
+  // same call in a wait for the host to collect the report, and answers false
+  // when that wait runs out - with the report already on its way. Kept and sent
+  // again, the same rotation arrived twice. Not waiting also means a slow host
+  // can no longer hold this loop for 100 ms.
+  if (!tud_hid_n_report(0, kReportInput, payload, sizeof(payload))) {
+    return;  // nothing went out; keep the state and try again next pass
   }
 
   pendingRotation_ -= rotation;
