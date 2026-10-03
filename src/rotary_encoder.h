@@ -11,6 +11,10 @@
 // Decodes the encoder's quadrature signal in an interrupt handler and reports
 // completed detents plus the push button state from the main loop.
 //
+// A "detent" in this class is one full quadrature cycle. The encoder on this
+// board clicks twice per cycle, so one reported detent is two clicks of the
+// knob.
+//
 // The quadrature signal is decoded with a state machine instead of a debounce
 // timer: the machine only leaves a detent state through a valid transition
 // sequence, so contact bounce is rejected by construction and no rotation is
