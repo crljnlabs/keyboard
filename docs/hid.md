@@ -191,8 +191,9 @@ The panel itself is 240 x 280 (`TFT_WIDTH` and `TFT_HEIGHT` in
 come from `Display::kWidth` and `Display::kHeight`.
 
 The physical size is the 1.69 inch panel's visible area, 32.6 by 27.9 mm in this
-orientation. The corner radius of `43` was measured from a photo of the panel:
-all four corners came out at 42 to 44 px (`Display::kCornerRadius`).
+orientation. The corner radius of `43` was measured from a photo of the panel -
+all four corners came out at 42 to 44 px - and confirmed on the device, where an
+arc of that radius ran along the edge of the glass (`Display::kCornerRadius`).
 
 The flags say the backlight can be dimmed (bit 0) and the display takes full
 frames (bit 1). Both are true of the panel - the firmware dims the backlight
@@ -206,13 +207,6 @@ Declared as 63 bytes per packet. The firmware ignores whatever arrives on it,
 and the framing for pixel data and commands is not specified yet; specifying it
 is part of building the display feed. A full frame of this display, 280 x 240 in
 RGB565, is 134400 bytes, so it will have to arrive in pieces.
-
-## Open points
-
-- The corner radius should be confirmed by eye. The status screen draws arcs of
-  radius 35, 43 and 51 in its top right corner, in the colours the header names
-  them in: 35 should be gone under the glass, 43 should run along its edge, and
-  51 should be whole.
 
 ## See also
 

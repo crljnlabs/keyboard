@@ -25,20 +25,6 @@ constexpr uint8_t kTileRows = 2;
 // Zeroes the counter when the encoder button is released again within this long.
 constexpr uint16_t kResetPressMs = 600;
 
-// --- corner gauge ----------------------------------------------------------
-// Arcs to check the measured corner radius (43) by eye: the glass hides any arc
-// smaller than its own rounding. Expected: red (35) gone, green (43) running
-// along the glass edge, cyan (51) whole.
-struct GaugeArc {
-  int16_t radius;
-  uint16_t color;
-};
-constexpr GaugeArc kGaugeArcs[] = {
-    {35, 0xF800},  // red
-    {43, 0x07E0},  // green
-    {51, 0x07FF},  // cyan
-};
-
 }  // namespace
 
 void StatusScreen::begin() {
@@ -60,33 +46,12 @@ void StatusScreen::drawChrome() {
   tft.setTextColor(kColorAccent, kColorBackground);
   tft.drawString("ANYDECK", left, top + kHeaderHeight / 2, 4);
 
-  drawCornerGauge();
+  tft.setTextDatum(MR_DATUM);
+  tft.setTextColor(kColorMuted, kColorBackground);
+  tft.drawString("KEYPAD 6+1", right, top + kHeaderHeight / 2, 2);
 
   // Hairline under the header, inset like everything else.
   tft.drawFastHLine(left, top + kHeaderHeight, right - left, kColorPanel);
-}
-
-void StatusScreen::drawCornerGauge() {
-  TFT_eSPI& tft = display_.tft();
-  const int16_t edge = display_.width() - 1;
-
-  // Outside the safe area on purpose: the corner is what is being checked.
-  for (const GaugeArc& arc : kGaugeArcs) {
-    tft.drawCircleHelper(edge - arc.radius, arc.radius, arc.radius, 0x2, arc.color);  // 0x2: top right
-  }
-
-  // The radii in the header, in their arcs' colours, ending clear of the largest arc.
-  constexpr int16_t kLegendGap = 6;
-  constexpr int kArcs = sizeof(kGaugeArcs) / sizeof(kGaugeArcs[0]);
-  int16_t x = edge - kGaugeArcs[kArcs - 1].radius - kLegendGap;
-  const int16_t y = display_.safeTop() + kHeaderHeight / 2;
-  tft.setTextDatum(MR_DATUM);
-  for (int i = kArcs - 1; i >= 0; --i) {
-    tft.setTextColor(kGaugeArcs[i].color, kColorBackground);
-    char label[4];
-    snprintf(label, sizeof(label), "%d", kGaugeArcs[i].radius);
-    x -= tft.drawString(label, x, y, 2) + kLegendGap;
-  }
 }
 
 void StatusScreen::drawEncoder() {
