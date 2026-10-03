@@ -26,13 +26,13 @@ What anydeck does with each of them today is in the contract's last section.
 |---|---|---|
 | vendor id | `0x303A` | the Arduino core's `esp32s3` variant |
 | product id | `0x1001` | the Arduino core's `esp32s3` variant |
-| manufacturer | `Espressif Systems` | the Arduino core's default |
+| manufacturer | `crljn.labs` | `USB_MANUFACTURER` in `platformio.ini` |
 | product | `crljn-board` | `USB_PRODUCT` in `platformio.ini` |
 | serial number | the chip's MAC address | the Arduino core's default |
 
-Only the product name is set by this project. The serial number is the chip's
-factory MAC address as twelve hex digits - `2884856D6EC0` on the first unit -
-so every keypad has its own, which is what the contract asks for.
+The product and the manufacturer are set by this project. The serial number
+is the chip's factory MAC address as twelve hex digits - `2884856D6EC0` on the
+first unit - so every keypad has its own, which is what the contract asks for.
 
 The vendor and product id are Espressif's generic pair, shared by many ESP32-S3
 boards. That does no harm: anydeck does not pick devices by those ids, and the
