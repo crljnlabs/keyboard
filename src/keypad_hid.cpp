@@ -148,7 +148,7 @@ uint16_t KeypadHid::_onGetFeature(uint8_t reportId, uint8_t* buffer, uint16_t le
       kPixelFormatRgb565,
       0,  // display index
       Display::kRotation,
-      Display::kSafeInset,  // corner radius
+      Display::kCornerRadius,
       static_cast<uint8_t>(kPhysicalWidthTenthMm & 0xFF),
       static_cast<uint8_t>(kPhysicalWidthTenthMm >> 8),
       static_cast<uint8_t>(kPhysicalHeightTenthMm & 0xFF),

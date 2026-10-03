@@ -178,7 +178,7 @@ On the wire, after the report id:
 | | 4 | pixel format | `1`, RGB565 |
 | | 5 | display index | `0` |
 | | 6 | rotation the firmware applies, in 90° steps | `3` |
-| | 7 | corner radius in pixels | `14` |
+| | 7 | corner radius in pixels | `43` |
 | | 8..9 | physical width, tenths of a millimetre | `326` |
 | | 10..11 | physical height, tenths of a millimetre | `279` |
 | | 12 | capability flags | `0b0000_0011` |
@@ -191,8 +191,8 @@ The panel itself is 240 x 280 (`TFT_WIDTH` and `TFT_HEIGHT` in
 come from `Display::kWidth` and `Display::kHeight`.
 
 The physical size is the 1.69 inch panel's visible area, 32.6 by 27.9 mm in this
-orientation. The corner radius of `14` is the firmware's safe inset
-(`Display::kSafeInset`), not a measurement.
+orientation. The corner radius of `43` was measured from a photo of the panel:
+all four corners came out at 42 to 44 px (`Display::kCornerRadius`).
 
 The flags say the backlight can be dimmed (bit 0) and the display takes full
 frames (bit 1). Both are true of the panel - the firmware dims the backlight
@@ -209,10 +209,10 @@ RGB565, is 134400 bytes, so it will have to arrive in pieces.
 
 ## Open points
 
-- The corner radius of `14` should be measured on the real panel. The status
-  screen draws a gauge for it in its top right corner: arcs of radius 8, 11,
-  14, 17, 20 and 23, each in the colour the header names it in. The smallest
-  arc that is visible from end to end is the radius.
+- The corner radius should be confirmed by eye. The status screen draws arcs of
+  radius 35, 43 and 51 in its top right corner, in the colours the header names
+  them in: 35 should be gone under the glass, 43 should run along its edge, and
+  51 should be whole.
 
 ## See also
 

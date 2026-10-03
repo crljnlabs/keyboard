@@ -26,26 +26,17 @@ constexpr uint8_t kTileRows = 2;
 constexpr uint16_t kResetPressMs = 600;
 
 // --- corner gauge ----------------------------------------------------------
-// A ruler for the glass's corner radius, which is so far a guess (14, the safe
-// inset). Each arc is the outline a rounded corner of that radius would have:
-// it touches the top and the right edge, and the smaller it is, the further it
-// reaches into the corner. The glass hides everything outside its own curve,
-// so an arc smaller than the real radius loses its middle and one at least as
-// big stays whole. The smallest arc that is whole is the radius.
-//
-// Each arc has its own colour, and the header names the radii in the same
-// colours, in the same order.
+// Arcs to check the measured corner radius (43) by eye: the glass hides any arc
+// smaller than its own rounding. Expected: red (35) gone, green (43) running
+// along the glass edge, cyan (51) whole.
 struct GaugeArc {
   int16_t radius;
   uint16_t color;
 };
 constexpr GaugeArc kGaugeArcs[] = {
-    {8, 0xF800},   // red
-    {11, 0xFD20},  // orange
-    {14, 0xFFE0},  // yellow
-    {17, 0x07E0},  // green
-    {20, 0x07FF},  // cyan
-    {23, 0xF81F},  // magenta
+    {35, 0xF800},  // red
+    {43, 0x07E0},  // green
+    {51, 0x07FF},  // cyan
 };
 
 }  // namespace
@@ -79,20 +70,18 @@ void StatusScreen::drawCornerGauge() {
   TFT_eSPI& tft = display_.tft();
   const int16_t edge = display_.width() - 1;
 
-  // On purpose outside the safe area: the corner is what is being measured.
+  // Outside the safe area on purpose: the corner is what is being checked.
   for (const GaugeArc& arc : kGaugeArcs) {
-    // 0x2 is the top right quarter of the circle.
-    tft.drawCircleHelper(edge - arc.radius, arc.radius, arc.radius, 0x2, arc.color);
+    tft.drawCircleHelper(edge - arc.radius, arc.radius, arc.radius, 0x2, arc.color);  // 0x2: top right
   }
 
-  // The legend, right-aligned in the header and clear of the largest arc:
-  // the radii from the right, smallest last, each in its arc's colour.
+  // The radii in the header, in their arcs' colours, ending clear of the largest arc.
   constexpr int16_t kLegendGap = 6;
-  const int16_t largest = kGaugeArcs[sizeof(kGaugeArcs) / sizeof(kGaugeArcs[0]) - 1].radius;
-  int16_t x = edge - largest - kLegendGap;
+  constexpr int kArcs = sizeof(kGaugeArcs) / sizeof(kGaugeArcs[0]);
+  int16_t x = edge - kGaugeArcs[kArcs - 1].radius - kLegendGap;
   const int16_t y = display_.safeTop() + kHeaderHeight / 2;
   tft.setTextDatum(MR_DATUM);
-  for (int i = sizeof(kGaugeArcs) / sizeof(kGaugeArcs[0]) - 1; i >= 0; --i) {
+  for (int i = kArcs - 1; i >= 0; --i) {
     tft.setTextColor(kGaugeArcs[i].color, kColorBackground);
     char label[4];
     snprintf(label, sizeof(label), "%d", kGaugeArcs[i].radius);

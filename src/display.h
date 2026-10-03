@@ -47,10 +47,13 @@ class Display {
   static constexpr int16_t kWidth = (kRotation % 2 == 1) ? TFT_HEIGHT : TFT_WIDTH;
   static constexpr int16_t kHeight = (kRotation % 2 == 1) ? TFT_WIDTH : TFT_HEIGHT;
 
-  // --- safe area -------------------------------------------------------------
-  // The panel's glass has rounded corners, so the outermost pixels of the
-  // rectangle are not all visible. Everything that has to be readable belongs
-  // inside the safe area; only decoration may reach past it.
+  // --- corners and safe area -------------------------------------------------
+  // The glass hides the corners: their rounding has a radius of 43 px,
+  // measured from a photo of the panel (all four corners 42-44 px).
+  static constexpr uint8_t kCornerRadius = 43;
+
+  // Everything readable stays this far from the edges. Enough for the corners:
+  // the inset corner point (14, 14) is still 2 px inside the rounding.
   static constexpr int16_t kSafeInset = 14;
 
   int16_t safeLeft() const { return kSafeInset; }
