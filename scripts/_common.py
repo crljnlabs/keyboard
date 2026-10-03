@@ -325,9 +325,14 @@ def flash_image(port: str, image: Path, offset: int = 0x0, baud: int = DEFAULT_U
 
     The chip is then in download mode, but usually under a *different* port
     name, which is why retrying the same path cannot work and re-discovering the
-    port can. The attempts below escalate: same port, re-discovered port, and
-    finally re-discovered port without another reset, for the case where the
-    chip already sits in the ROM bootloader.
+    port can.
+
+    So the app's own USB port is not flashed through at all. esptool's reset
+    over it does not reach the bootloader with this firmware: every attempt sat
+    through a long "Connecting..." and failed, every time. The 1200
+    baud touch, which the Arduino core answers by rebooting into download mode,
+    goes there straight away. Only a port that is not the board's own - a
+    USB-to-UART bridge on another board - is still tried directly first.
     """
     ports = {p["port"]: p for p in list_serial_ports()}
 
@@ -337,13 +342,13 @@ def flash_image(port: str, image: Path, offset: int = 0x0, baud: int = DEFAULT_U
         _esptool_write(port, image, offset, baud, before="no_reset")
         return
 
-    try:
-        _esptool_write(port, image, offset, baud)
-        return
-    except subprocess.CalledProcessError:
-        pass
+    if not (port in ports and looks_like_espressif(ports[port])):
+        try:
+            _esptool_write(port, image, offset, baud)
+            return
+        except subprocess.CalledProcessError:
+            info(f"Flashing through {port} failed - asking the board for download mode instead")
 
-    info("Direct flashing failed - the app is most likely crashing and tearing its USB port down")
     boot_port = request_download_mode()
     if boot_port is None:
         fail(
