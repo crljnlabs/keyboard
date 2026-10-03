@@ -17,19 +17,13 @@ constexpr uint8_t kCwNext = 0x3;
 constexpr uint8_t kCcwBegin = 0x4;
 constexpr uint8_t kCcwFinal = 0x5;
 constexpr uint8_t kCcwNext = 0x6;
-// Not in Buxton's table: halfway through a cycle with no direction known yet.
-// The encoder on this board has two detents per cycle - it rests with both
-// lines high or with both low - and kCwNext and kCcwNext, the table's own
-// states for "both low", each already assume a direction. Only begin() starts
-// here; from then on the table reaches "both low" knowing which way it turns.
-constexpr uint8_t kMiddle = 0x7;
 
 constexpr uint8_t kDirCw = 0x10;
 constexpr uint8_t kDirCcw = 0x20;
 constexpr uint8_t kStateMask = 0x0f;
 constexpr uint8_t kDirMask = 0x30;
 
-const uint8_t kTransitions[8][4] = {
+const uint8_t kTransitions[7][4] = {
     // kStart
     {kStart, kCwBegin, kCcwBegin, kStart},
     // kCwFinal
@@ -44,9 +38,6 @@ const uint8_t kTransitions[8][4] = {
     {kCcwNext, kCcwFinal, kStart, static_cast<uint8_t>(kStart | kDirCcw)},
     // kCcwNext
     {kCcwNext, kCcwFinal, kCcwBegin, kStart},
-    // kMiddle: the next edge tells the direction, and the one after it
-    // completes the cycle.
-    {kMiddle, kCcwFinal, kCwFinal, kStart},
 };
 
 }  // namespace
@@ -59,14 +50,13 @@ void RotaryEncoder::begin() {
   pinMode(pins::kEncoderB, INPUT_PULLUP);
   button_.begin(pins::kEncoderButton);
 
-  // Start from a state that matches where the knob rests, chosen by name. The
-  // pin levels only share the numbers: both lines high is level 3, and 3 in the
-  // table is kCwNext, a clockwise turn already under way - started there, the
-  // first counter-clockwise step after power-up was dropped. And this encoder
-  // rests at two places per cycle. Started at kStart with both lines low, the
-  // first step took three detents; from kMiddle it comes at the next detent
-  // with both lines high, which is where every later step comes too.
-  state_ = sampleLevels() == 0 ? kMiddle : kStart;
+  // Start from the table's resting state, not from the pin levels. The two are
+  // different things that happen to share numbers: at a detent both lines are
+  // high, which is level 3 - and 3 in the table is kCwNext, a clockwise turn
+  // already under way. Started there, the first counter-clockwise detent after
+  // power-up read as that turn being undone, and was dropped. kStart is where
+  // the table rests between detents, whatever the lines read.
+  state_ = kStart;
 
   attachInterruptArg(digitalPinToInterrupt(pins::kEncoderA), onQuadratureEdge, this, CHANGE);
   attachInterruptArg(digitalPinToInterrupt(pins::kEncoderB), onQuadratureEdge, this, CHANGE);

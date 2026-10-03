@@ -142,9 +142,6 @@ device, listed once per collection.
 | 2 | 1..7 | padding, always `0` |
 | 3 | 7..0 | encoder movement since the previous report, signed, `+` = clockwise |
 
-One unit of movement is one full quadrature cycle. The encoder on this board
-clicks twice per cycle, so a unit is two clicks of the knob.
-
 Sent when something changed. Also sent once after start-up, as soon as the PC
 has set the device up, with whatever is held at that moment - even if that is
 nothing. A program that opens the device only later does not get that first
