@@ -2,42 +2,44 @@
 
 namespace {
 
-// Full-step quadrature transition table (the well-known table by Ben Buxton,
-// "Rotary encoder, state machine implementation"). Row = current state, column
+// Half-step quadrature transition table (Ben Buxton, "Rotary encoder, state
+// machine implementation", the half-step variant). Row = current state, column
 // = the new pin levels as (B << 1) | A. A cell holds the follow-up state, with
-// kDirCw / kDirCcw set in the upper bits when a full detent was completed.
+// kDirCw / kDirCcw set in the upper bits when a detent was completed.
 //
-// Only the sequences that pass through all four intermediate states emit a
-// step, which is what makes bounce and half-detent jitter invisible: a contact
-// that rattles between two levels keeps falling back to kStart.
-constexpr uint8_t kStart = 0x0;
-constexpr uint8_t kCwFinal = 0x1;
-constexpr uint8_t kCwBegin = 0x2;
-constexpr uint8_t kCwNext = 0x3;
-constexpr uint8_t kCcwBegin = 0x4;
-constexpr uint8_t kCcwFinal = 0x5;
-constexpr uint8_t kCcwNext = 0x6;
+// Half-step because the encoder on this board clicks twice per quadrature
+// cycle: it rests with both lines high, and again with both lines low. A
+// full-step table only completes at one of the two, so it counted every second
+// click. This one completes at both - one step per click.
+//
+// A step is still only emitted after the lines passed through the level in
+// between, so a contact that rattles between two levels keeps falling back to
+// the rest it came from.
+constexpr uint8_t kRestHigh = 0x0;     // both lines high
+constexpr uint8_t kCcwBegin = 0x1;     // out of the high rest, counter-clockwise
+constexpr uint8_t kCwBegin = 0x2;      // out of the high rest, clockwise
+constexpr uint8_t kRestLow = 0x3;      // both lines low
+constexpr uint8_t kCwBeginLow = 0x4;   // out of the low rest, clockwise
+constexpr uint8_t kCcwBeginLow = 0x5;  // out of the low rest, counter-clockwise
 
 constexpr uint8_t kDirCw = 0x10;
 constexpr uint8_t kDirCcw = 0x20;
 constexpr uint8_t kStateMask = 0x0f;
 constexpr uint8_t kDirMask = 0x30;
 
-const uint8_t kTransitions[7][4] = {
-    // kStart
-    {kStart, kCwBegin, kCcwBegin, kStart},
-    // kCwFinal
-    {kCwNext, kStart, kCwFinal, static_cast<uint8_t>(kStart | kDirCw)},
-    // kCwBegin
-    {kCwNext, kCwBegin, kStart, kStart},
-    // kCwNext
-    {kCwNext, kCwBegin, kCwFinal, kStart},
+const uint8_t kTransitions[6][4] = {
+    // kRestHigh
+    {kRestLow, kCwBegin, kCcwBegin, kRestHigh},
     // kCcwBegin
-    {kCcwNext, kStart, kCcwBegin, kStart},
-    // kCcwFinal
-    {kCcwNext, kCcwFinal, kStart, static_cast<uint8_t>(kStart | kDirCcw)},
-    // kCcwNext
-    {kCcwNext, kCcwFinal, kCcwBegin, kStart},
+    {static_cast<uint8_t>(kRestLow | kDirCcw), kRestHigh, kCcwBegin, kRestHigh},
+    // kCwBegin
+    {static_cast<uint8_t>(kRestLow | kDirCw), kCwBegin, kRestHigh, kRestHigh},
+    // kRestLow
+    {kRestLow, kCcwBeginLow, kCwBeginLow, kRestHigh},
+    // kCwBeginLow
+    {kRestLow, kRestLow, kCwBeginLow, static_cast<uint8_t>(kRestHigh | kDirCw)},
+    // kCcwBeginLow
+    {kRestLow, kCcwBeginLow, kRestLow, static_cast<uint8_t>(kRestHigh | kDirCcw)},
 };
 
 }  // namespace
@@ -50,13 +52,10 @@ void RotaryEncoder::begin() {
   pinMode(pins::kEncoderB, INPUT_PULLUP);
   button_.begin(pins::kEncoderButton);
 
-  // Start from the table's resting state, not from the pin levels. The two are
-  // different things that happen to share numbers: at a detent both lines are
-  // high, which is level 3 - and 3 in the table is kCwNext, a clockwise turn
-  // already under way. Started there, the first counter-clockwise detent after
-  // power-up read as that turn being undone, and was dropped. kStart is where
-  // the table rests between detents, whatever the lines read.
-  state_ = kStart;
+  // Start at the rest the knob is actually in. Either is a detent, and the
+  // table only leaves a rest through the level in between, so starting at the
+  // other one would cost the first click.
+  state_ = sampleLevels() == 0 ? kRestLow : kRestHigh;
 
   attachInterruptArg(digitalPinToInterrupt(pins::kEncoderA), onQuadratureEdge, this, CHANGE);
   attachInterruptArg(digitalPinToInterrupt(pins::kEncoderB), onQuadratureEdge, this, CHANGE);
