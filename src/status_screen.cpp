@@ -25,6 +25,29 @@ constexpr uint8_t kTileRows = 2;
 // Zeroes the counter when the encoder button is released again within this long.
 constexpr uint16_t kResetPressMs = 600;
 
+// --- corner gauge ----------------------------------------------------------
+// A ruler for the glass's corner radius, which is so far a guess (14, the safe
+// inset). Each arc is the outline a rounded corner of that radius would have:
+// it touches the top and the right edge, and the smaller it is, the further it
+// reaches into the corner. The glass hides everything outside its own curve,
+// so an arc smaller than the real radius loses its middle and one at least as
+// big stays whole. The smallest arc that is whole is the radius.
+//
+// Each arc has its own colour, and the header names the radii in the same
+// colours, in the same order.
+struct GaugeArc {
+  int16_t radius;
+  uint16_t color;
+};
+constexpr GaugeArc kGaugeArcs[] = {
+    {8, 0xF800},   // red
+    {11, 0xFD20},  // orange
+    {14, 0xFFE0},  // yellow
+    {17, 0x07E0},  // green
+    {20, 0x07FF},  // cyan
+    {23, 0xF81F},  // magenta
+};
+
 }  // namespace
 
 void StatusScreen::begin() {
@@ -46,12 +69,35 @@ void StatusScreen::drawChrome() {
   tft.setTextColor(kColorAccent, kColorBackground);
   tft.drawString("ANYDECK", left, top + kHeaderHeight / 2, 4);
 
-  tft.setTextDatum(MR_DATUM);
-  tft.setTextColor(kColorMuted, kColorBackground);
-  tft.drawString("KEYPAD 6+1", right, top + kHeaderHeight / 2, 2);
+  drawCornerGauge();
 
   // Hairline under the header, inset like everything else.
   tft.drawFastHLine(left, top + kHeaderHeight, right - left, kColorPanel);
+}
+
+void StatusScreen::drawCornerGauge() {
+  TFT_eSPI& tft = display_.tft();
+  const int16_t edge = display_.width() - 1;
+
+  // On purpose outside the safe area: the corner is what is being measured.
+  for (const GaugeArc& arc : kGaugeArcs) {
+    // 0x2 is the top right quarter of the circle.
+    tft.drawCircleHelper(edge - arc.radius, arc.radius, arc.radius, 0x2, arc.color);
+  }
+
+  // The legend, right-aligned in the header and clear of the largest arc:
+  // the radii from the right, smallest last, each in its arc's colour.
+  constexpr int16_t kLegendGap = 6;
+  const int16_t largest = kGaugeArcs[sizeof(kGaugeArcs) / sizeof(kGaugeArcs[0]) - 1].radius;
+  int16_t x = edge - largest - kLegendGap;
+  const int16_t y = display_.safeTop() + kHeaderHeight / 2;
+  tft.setTextDatum(MR_DATUM);
+  for (int i = sizeof(kGaugeArcs) / sizeof(kGaugeArcs[0]) - 1; i >= 0; --i) {
+    tft.setTextColor(kGaugeArcs[i].color, kColorBackground);
+    char label[4];
+    snprintf(label, sizeof(label), "%d", kGaugeArcs[i].radius);
+    x -= tft.drawString(label, x, y, 2) + kLegendGap;
+  }
 }
 
 void StatusScreen::drawEncoder() {

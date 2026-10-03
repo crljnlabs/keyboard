@@ -30,6 +30,8 @@ class StatusScreen {
 
  private:
   void drawChrome();
+  // Arcs in the top right corner to read the glass's corner radius off.
+  void drawCornerGauge();
   void drawEncoder();
   void drawKeyTiles();
 

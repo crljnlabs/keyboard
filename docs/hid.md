@@ -209,7 +209,10 @@ RGB565, is 134400 bytes, so it will have to arrive in pieces.
 
 ## Open points
 
-- The corner radius of `14` should be measured on the real panel.
+- The corner radius of `14` should be measured on the real panel. The status
+  screen draws a gauge for it in its top right corner: arcs of radius 8, 11,
+  14, 17, 20 and 23, each in the colour the header names it in. The smallest
+  arc that is visible from end to end is the radius.
 
 ## See also
 
