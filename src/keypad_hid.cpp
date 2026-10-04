@@ -133,6 +133,12 @@ uint16_t KeypadHid::_onGetDescriptor(uint8_t* buffer) {
 }
 
 uint16_t KeypadHid::_onGetFeature(uint8_t reportId, uint8_t* buffer, uint16_t length) {
+  // The core hands every GET_REPORT here, whatever its type - so this also
+  // answers a host asking for the input report, which is how a program that
+  // opens the device late learns where everything stands.
+  if (reportId == kReportInput) {
+    return currentInput(buffer, length);
+  }
   if (reportId != kReportCapabilities) {
     return 0;
   }
@@ -175,6 +181,17 @@ uint16_t KeypadHid::_onGetFeature(uint8_t reportId, uint8_t* buffer, uint16_t le
   buffer[at++] = kEntryEnd;
   buffer[at++] = 0;
   return at;
+}
+
+uint16_t KeypadHid::currentInput(uint8_t* buffer, uint16_t length) const {
+  if (length < 3) {
+    return 0;
+  }
+  buffer[0] = keyMask_;
+  buffer[1] = encoderButton_ ? 1 : 0;
+  // Asking is not turning: what is pending still goes out with the next report.
+  buffer[2] = 0;
+  return 3;
 }
 
 void KeypadHid::setKey(uint8_t index, bool pressed) {

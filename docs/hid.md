@@ -145,7 +145,10 @@ device, listed once per collection.
 Sent when something changed. Also sent once after start-up, as soon as the PC
 has set the device up, with whatever is held at that moment - even if that is
 nothing. A program that opens the device only later does not get that first
-report, and there is no other way to ask the keypad for its current state.
+report; it asks instead. A GET_REPORT for report `0x01` answers with the keys and
+the button as they are now and `0` in byte 3 - asking is not turning, and
+detents not yet sent still go out with the next report. anydeck asks once,
+when it opens the keypad.
 
 Byte 3 is a **difference, not a position**. The firmware adds up detents between
 reports. A report takes as many of them as fit - up to ±127 - and leaves the

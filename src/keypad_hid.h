@@ -54,6 +54,9 @@ class KeypadHid : public USBHIDDevice {
   uint16_t _onGetFeature(uint8_t reportId, uint8_t* buffer, uint16_t length) override;
 
  private:
+  // Report 0x01's payload as things stand: keys, button, no rotation.
+  uint16_t currentInput(uint8_t* buffer, uint16_t length) const;
+
   USBHID hid_;
 
   // One bit per key, bit 0 = SW1.
