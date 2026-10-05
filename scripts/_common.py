@@ -164,16 +164,23 @@ def describe_build(build_id: str) -> str:
 
 
 def pio_executable() -> str:
+    """PlatformIO's own installation first, then whatever is on PATH.
+
+    Its private Python has what the bundled tools need - esptool wants
+    intelhex. A copy installed with pip elsewhere can be older and miss it,
+    and on PATH it used to win: the build then failed at bootloader.bin.
+    """
+    scripts = "Scripts" if os.name == "nt" else "bin"
+    own = Path.home() / ".platformio" / "penv" / scripts / ("pio.exe" if os.name == "nt" else "pio")
+    if own.exists():
+        return str(own)
     for candidate in ("pio", "platformio"):
         found = shutil.which(candidate)
         if found:
             return found
-    for candidate in (
-        Path.home() / ".platformio" / "penv" / "bin" / "pio",
-        Path.home() / ".local" / "bin" / "pio",
-    ):
-        if candidate.exists():
-            return str(candidate)
+    local = Path.home() / ".local" / "bin" / "pio"
+    if local.exists():
+        return str(local)
     fail("PlatformIO Core not found. Install it: pip install platformio")
     raise AssertionError("unreachable")
 
