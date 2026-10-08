@@ -39,6 +39,15 @@ MANIFEST_NAME = "manifest.json"
 
 VERSION_RE = re.compile(r"^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?$")
 
+# Builds are named by the moment they were produced. A version number is not
+# available at build time - it is chosen when a build is deployed - and a
+# timestamp both sorts chronologically as plain text and never collides.
+BUILD_ID_RE = re.compile(r"^\d{8}-\d{6}$")
+
+# Remembers the port that last worked, so flashing does not ask every time.
+# Git-ignored: it describes this machine, not the project.
+PORT_MEMORY = PROJECT_DIR / ".flash-port"
+
 DEFAULT_UPLOAD_BAUD = 921600
 
 
@@ -91,13 +100,6 @@ def is_valid_version(version: str) -> bool:
     return bool(VERSION_RE.match(version))
 
 
-def prompt_version() -> str:
-    while True:
-        version = ask("Version to build (e.g. v1.0.0)")
-        if is_valid_version(version):
-            return version
-        print("Invalid version. Expected format: v<major>.<minor>.<patch>[-suffix]")
-
 
 def version_sort_key(version: str) -> tuple:
     match = VERSION_RE.match(version)
@@ -110,6 +112,19 @@ def version_sort_key(version: str) -> tuple:
     return (numbers[0], numbers[1], numbers[2], 0 if suffix else 1, suffix)
 
 
+def next_version(previous: str | None) -> str:
+    """The version to suggest after `previous`: one minor step up.
+
+    A minor bump rather than a patch bump because that is what these releases
+    are - the firmware gains a capability at a time. Patch numbers stay
+    available for typing in by hand.
+    """
+    if not previous or not is_valid_version(previous):
+        return "v0.1.0"
+    major, minor, _patch = (int(part) for part in previous[1:].split("-", 1)[0].split("."))
+    return f"v{major}.{minor + 1}.0"
+
+
 def list_versions(directory: Path) -> list[str]:
     if not directory.is_dir():
         return []
@@ -117,20 +132,55 @@ def list_versions(directory: Path) -> list[str]:
     return sorted(names, key=version_sort_key)
 
 
+def new_build_id() -> str:
+    return datetime.now().strftime("%Y%m%d-%H%M%S")
+
+
+def list_builds() -> list[str]:
+    """Build ids present in build/, oldest first."""
+    if not BUILD_DIR.is_dir():
+        return []
+    return sorted(entry.name for entry in BUILD_DIR.iterdir()
+                  if entry.is_dir() and BUILD_ID_RE.match(entry.name))
+
+
+def latest_build() -> str | None:
+    builds = list_builds()
+    return builds[-1] if builds else None
+
+
+def describe_build(build_id: str) -> str:
+    """One line about a build, for pickers: its id plus what the manifest says."""
+    manifest = read_manifest(BUILD_DIR / build_id)
+    parts = [build_id]
+    if manifest.get("environment"):
+        parts.append(manifest["environment"])
+    if manifest.get("commit"):
+        parts.append(manifest["commit"])
+    return "  ".join(parts)
+
+
 # --- PlatformIO -------------------------------------------------------------
 
 
 def pio_executable() -> str:
+    """PlatformIO's own installation first, then whatever is on PATH.
+
+    Its private Python has what the bundled tools need - esptool wants
+    intelhex. A copy installed with pip elsewhere can be older and miss it,
+    and on PATH it used to win: the build then failed at bootloader.bin.
+    """
+    scripts = "Scripts" if os.name == "nt" else "bin"
+    own = Path.home() / ".platformio" / "penv" / scripts / ("pio.exe" if os.name == "nt" else "pio")
+    if own.exists():
+        return str(own)
     for candidate in ("pio", "platformio"):
         found = shutil.which(candidate)
         if found:
             return found
-    for candidate in (
-        Path.home() / ".platformio" / "penv" / "bin" / "pio",
-        Path.home() / ".local" / "bin" / "pio",
-    ):
-        if candidate.exists():
-            return str(candidate)
+    local = Path.home() / ".local" / "bin" / "pio"
+    if local.exists():
+        return str(local)
     fail("PlatformIO Core not found. Install it: pip install platformio")
     raise AssertionError("unreachable")
 
@@ -190,16 +240,139 @@ def esptool_command() -> list[str]:
     return [sys.executable, "-m", "esptool"]
 
 
+def _esptool_write(port: str, image: Path, offset: int, baud: int, before: str = "") -> None:
+    command = esptool_command() + ["--chip", CHIP, "--port", port, "--baud", str(baud)]
+    if before:
+        command += ["--before", before]
+    command += ["write_flash", hex(offset), str(image)]
+    run(command)
+
+
+# Opening the app's CDC port at 1200 baud is the standard way to put a
+# native-USB ESP32 into download mode without touching a button: Arduino's
+# USBCDC::_onLineCoding() reacts to that baud rate with
+# usb_persist_restart(RESTART_BOOTLOADER), and on the ESP32-S3 that switches the
+# USB peripheral over to the ROM's USB-Serial-JTAG interface. It is the same
+# mechanism the Arduino IDE uses to upload.
+_TOUCH_SCRIPT = (
+    "import sys, serial\n"
+    "try:\n"
+    "    s = serial.Serial(sys.argv[1], 1200)\n"
+    "except Exception:\n"
+    "    sys.exit(2)\n"
+    "try:\n"
+    "    s.dtr = False\n"
+    "    s.close()\n"
+    "except Exception:\n"
+    "    pass\n"
+)
+
+
+def _penv_python() -> str:
+    """Path to PlatformIO's bundled interpreter, which always has pyserial."""
+    base = pio_core_dir() / "penv" / ("Scripts" if os.name == "nt" else "bin")
+    candidate = base / ("python.exe" if os.name == "nt" else "python")
+    return str(candidate) if candidate.exists() else ""
+
+
+def _touch_1200_baud(port: str) -> None:
+    """Set the port to 1200 baud, asking a running app to reboot into download mode."""
+    python = _penv_python()
+    if python:
+        command = [python, "-c", _TOUCH_SCRIPT, port]
+    else:
+        # No pyserial reachable: stty can set the line coding just as well.
+        flag = "-f" if sys.platform == "darwin" else "-F"
+        command = ["stty", flag, port, "1200"]
+    try:
+        subprocess.run(command, check=False, capture_output=True, timeout=5)
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+
+
+def request_download_mode(timeout: float = 25.0) -> str | None:
+    """Get the board into download mode without any button presses.
+
+    Returns the port of the ROM's USB-Serial-JTAG interface, or None on timeout.
+
+    The retry loop matters for a board whose app is crashing: its CDC port only
+    exists for the fraction of a second between one boot and the next crash, so
+    the 1200 baud touch has to be attempted repeatedly until one lands. Once it
+    does, the chip stays in download mode until the next reset.
+    """
+    deadline = time.monotonic() + timeout
+    announced = False
+    while time.monotonic() < deadline:
+        ports = list_serial_ports()
+
+        for port in ports:
+            if looks_like_bootloader(port):
+                return port["port"]
+
+        candidates = [p["port"] for p in ports if looks_like_espressif(p)]
+        if candidates and not announced:
+            info("Asking the board to enter download mode (1200 baud touch)")
+            announced = True
+        for candidate in candidates:
+            _touch_1200_baud(candidate)
+
+        time.sleep(0.4)
+    return None
+
+
 def flash_image(port: str, image: Path, offset: int = 0x0, baud: int = DEFAULT_UPLOAD_BAUD) -> None:
-    run(
-        esptool_command()
-        + [
-            "--chip", CHIP,
-            "--port", port,
-            "--baud", str(baud),
-            "write_flash", hex(offset), str(image),
-        ]
-    )
+    """Write the merged image, surviving a USB re-enumeration mid-flash.
+
+    The board has no USB-to-UART bridge: the serial port is the ESP32-S3's own
+    USB peripheral. When esptool resets the chip into download mode, the running
+    app's TinyUSB CDC interface is replaced by the ROM's USB-Serial-JTAG
+    interface. VID and PID change, so the operating system tears down the device
+    node and esptool's open file descriptor dies part-way through the reset
+    sequence - on macOS as "OSError: [Errno 6] Device not configured".
+
+    The chip is then in download mode, but usually under a *different* port
+    name, which is why retrying the same path cannot work and re-discovering the
+    port can.
+
+    So the app's own USB port is not flashed through at all. esptool's reset
+    over it does not reach the bootloader with this firmware: every attempt sat
+    through a long "Connecting..." and failed, every time. The 1200
+    baud touch, which the Arduino core answers by rebooting into download mode,
+    goes there straight away. Only a port that is not the board's own - a
+    USB-to-UART bridge on another board - is still tried directly first.
+    """
+    ports = {p["port"]: p for p in list_serial_ports()}
+
+    # Already in download mode: flash it straight away and do not reset it out
+    # of the state we need.
+    if port in ports and looks_like_bootloader(ports[port]):
+        _esptool_write(port, image, offset, baud, before="no_reset")
+        return
+
+    if not (port in ports and looks_like_espressif(ports[port])):
+        try:
+            _esptool_write(port, image, offset, baud)
+            return
+        except subprocess.CalledProcessError:
+            info(f"Flashing through {port} failed - asking the board for download mode instead")
+
+    boot_port = request_download_mode()
+    if boot_port is None:
+        fail(
+            "Could not get the board into download mode. Do it by hand: hold "
+            "BOOT, tap RESET, release BOOT, then run this script again."
+        )
+        raise AssertionError("unreachable")
+
+    info(f"Board is in download mode on {boot_port}")
+    try:
+        _esptool_write(boot_port, image, offset, baud, before="no_reset")
+        return
+    except subprocess.CalledProcessError:
+        fail(
+            f"The board is in download mode on {boot_port} but flashing still "
+            "failed. Run the script again and pick that port directly."
+        )
 
 
 # --- serial ports -----------------------------------------------------------
@@ -258,6 +431,11 @@ def looks_like_espressif(port: dict) -> bool:
     return ESPRESSIF_VID in port.get("hwid", "").upper()
 
 
+def looks_like_bootloader(port: dict) -> bool:
+    """True for the ROM's USB-Serial-JTAG interface, i.e. the board is in download mode."""
+    return "JTAG" in port.get("description", "").upper()
+
+
 def select_port(prompt: str = "Select device") -> str:
     ports = list_serial_ports()
     if not ports:
@@ -265,15 +443,29 @@ def select_port(prompt: str = "Select device") -> str:
     print()
     info("Connected USB serial devices:")
     for index, port in enumerate(ports, start=1):
-        marker = " (Espressif)" if looks_like_espressif(port) else ""
+        if looks_like_bootloader(port):
+            marker = " (Espressif, download mode - pick this one to flash)"
+        elif looks_like_espressif(port):
+            marker = " (Espressif)"
+        else:
+            marker = ""
         description = f" - {port['description']}" if port["description"] else ""
         print(f"    [{index}] {port['port']}{description}{marker}")
 
+    # A board in download mode exposes the ROM's USB-Serial-JTAG interface,
+    # which is the only port that stays put while flashing. A boot-looping app
+    # keeps tearing its own CDC port down, so prefer the bootloader whenever it
+    # is present.
     default_index = 1
     for index, port in enumerate(ports, start=1):
-        if looks_like_espressif(port):
+        if looks_like_bootloader(port):
             default_index = index
             break
+    else:
+        for index, port in enumerate(ports, start=1):
+            if looks_like_espressif(port):
+                default_index = index
+                break
 
     while True:
         answer = ask(f"{prompt} [1-{len(ports)}]", str(default_index))
@@ -282,11 +474,18 @@ def select_port(prompt: str = "Select device") -> str:
         print("Invalid selection.")
 
 
-def wait_for_port(preferred: str, timeout: float = 10.0) -> str | None:
-    """Wait for a port to (re-)appear after a reset, e.g. native USB re-enumeration."""
+def wait_for_port(preferred: str, timeout: float = 10.0, exclude: str = "") -> str | None:
+    """Wait for a port to (re-)appear after a reset, e.g. native USB re-enumeration.
+
+    `exclude` names a port that must not be returned. Pass the port that was
+    just flashed: that one is the ROM bootloader's USB-Serial-JTAG interface,
+    while the running app enumerates as a separate USB device under a different
+    name. Without this, the caller would reattach to the bootloader and see
+    nothing.
+    """
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        ports = list_serial_ports()
+        ports = [p for p in list_serial_ports() if p["port"] != exclude]
         names = [port["port"] for port in ports]
         if preferred in names:
             return preferred
@@ -295,6 +494,43 @@ def wait_for_port(preferred: str, timeout: float = 10.0) -> str | None:
             return espressif[0]
         time.sleep(0.5)
     return None
+
+
+def wait_for_app_port(timeout: float = 20.0) -> str | None:
+    """Wait for the running app's own USB CDC port to show up after a flash.
+
+    Skips the ROM's USB-Serial-JTAG interface: that one belongs to the
+    bootloader, so attaching a monitor to it would show nothing. A crashing app
+    republishes its port on every boot, so the first sighting wins.
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        for port in list_serial_ports():
+            if looks_like_espressif(port) and not looks_like_bootloader(port):
+                return port["port"]
+        time.sleep(0.4)
+    return None
+
+
+def remembered_port() -> str | None:
+    """The port that last flashed successfully, if it is still connected.
+
+    Returning None for a port that has gone away is the point: a remembered name
+    is only useful if it still exists, and re-asking is better than failing
+    against a stale one.
+    """
+    if not PORT_MEMORY.exists():
+        return None
+    saved = PORT_MEMORY.read_text().strip()
+    if not saved:
+        return None
+    if saved in (port["port"] for port in list_serial_ports()):
+        return saved
+    return None
+
+
+def remember_port(port: str) -> None:
+    PORT_MEMORY.write_text(port + "\n")
 
 
 def open_monitor(port: str, environment: str) -> None:
@@ -335,10 +571,29 @@ def merge_artifacts(directory: Path) -> Path:
     return merged
 
 
-def write_manifest(directory: Path, version: str, environment: str) -> Path:
+def git_commit() -> str:
+    """Short commit the build came from, or "" outside a git checkout."""
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(PROJECT_DIR), "rev-parse", "--short", "HEAD"],
+            check=True, capture_output=True, text=True,
+        )
+    except (subprocess.CalledProcessError, OSError):
+        return ""
+    dirty = subprocess.run(
+        ["git", "-C", str(PROJECT_DIR), "status", "--porcelain"],
+        check=False, capture_output=True, text=True,
+    ).stdout.strip()
+    return result.stdout.strip() + ("-dirty" if dirty else "")
+
+
+def write_manifest(directory: Path, build_id: str, environment: str,
+                   version: str | None = None) -> Path:
     manifest = {
+        "build_id": build_id,
         "version": version,
         "environment": environment,
+        "commit": git_commit(),
         "chip": CHIP,
         "built_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "merged_image": {"file": MERGED_IMAGE, "offset": "0x0"},
