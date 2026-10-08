@@ -34,6 +34,11 @@ class RotaryEncoder {
   int32_t position() const { return position_; }
   bool isButtonPressed() const { return button_.isPressed(); }
 
+  // Whether the push button reports its first edge at once - see
+  // DebouncedInput. The turning has no such choice: the state machine needs no
+  // waiting.
+  void setButtonFast(bool fast) { button_.setFast(fast); }
+
  private:
   // Interrupt entry point. Registered for both quadrature pins, so every edge
   // on either of them advances the state machine.

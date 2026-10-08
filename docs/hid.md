@@ -13,9 +13,10 @@ Status in this firmware:
 
 | | |
 |---|---|
-| report descriptor | offered, 110 bytes |
+| report descriptor | offered, 120 bytes |
 | report `0x01`, input | sent |
 | report `0x10`, capability block | answered |
+| report `0x11`, fast buttons | answered and taken, kept in flash |
 | report `0x20`, display data | declared, and ignored when it arrives |
 
 What anydeck does with each of them today is in the contract's last section.
@@ -42,7 +43,7 @@ anydeck names a keypad after its product name when it first finds it.
 
 ## Report descriptor
 
-110 bytes. Offered by the device at plug-in time. One vendor-defined
+120 bytes. Offered by the device at plug-in time. One vendor-defined
 application collection, a vendor-defined physical collection for the keys and
 one for the encoder, and standard usages on the data items inside.
 
@@ -99,6 +100,12 @@ static const uint8_t kReportDescriptor[] = {
     0x26, 0xFF, 0x00,        //   Logical Maximum (255)
     0x75, 0x08,              //   Report Size (8)
     0x95, 0x3F,              //   Report Count (63)
+    0xB1, 0x02,              //   Feature (Data, Variable, Absolute)
+
+    0x85, 0x11,              //   Report ID (0x11) - fast buttons
+    0x09, 0x11,              //   Usage (0x11)
+    0x75, 0x08,              //   Report Size (8)
+    0x95, 0x01,              //   Report Count (1)
     0xB1, 0x02,              //   Feature (Data, Variable, Absolute)
 
     0x85, 0x20,              //   Report ID (0x20) - display data, PC -> device
@@ -204,6 +211,28 @@ itself, through PWM - and neither can be reached from the PC yet: there is no
 command for the brightness, and nothing receives a frame. The flags describe
 the display as it is; using them is the display feed's work.
 
+## Report 0x11 — fast buttons, feature, read and written by the PC
+
+One byte after the report id. A bit stands for a button by its number in the
+descriptor, so the contract's rule - bit n for button n + 1 - comes out as:
+
+| Bit | Button | Element |
+|---|---|---|
+| 0..5 | 1..6 | keys SW1..SW6 |
+| 6 | 7 | the encoder's push button |
+| 7 | — | always `0` |
+
+`1` is fast, `0` normal, and normal is what a new keypad starts with. Both wait
+15 ms (`DebouncedInput`): normal until the contact has been stable that long,
+fast after the first edge, which it reports at once. The encoder's turning has
+no such setting: its state machine needs no waiting.
+
+A SET_REPORT takes effect at once - a GET_REPORT straight after it answers with
+what was set, bit 7 cleared - and the main loop applies it to the inputs and
+stores it in flash, NVS namespace `keypad`, key `fast-buttons`. Written only
+when the PC sends it, so the flash does not wear; read at every start, so the
+keypad keeps the setting after a power cut, with or without a PC.
+
 ## Report 0x20 — display data, output, PC to device
 
 Declared as 63 bytes per packet. The firmware ignores whatever arrives on it,
@@ -216,5 +245,6 @@ RGB565, is 134400 bytes, so it will have to arrive in pieces.
 - anydeck's device contract, `docs/device-protocol.md` in the anydeck
   repository: the rules this file follows, the capability block's format with
   all its defaults, and how anydeck finds and reads a device.
-- `src/keypad_hid.cpp`: the descriptor and the capability block as the firmware
-  builds them.
+- `src/keypad_hid.cpp`: the descriptor, the capability block and report `0x11`
+  as the firmware builds them; `src/debounced_input.h` for the two ways a
+  button is debounced.

@@ -7,6 +7,11 @@ namespace {
 // --- report ids -------------------------------------------------------------
 constexpr uint8_t kReportInput = 0x01;
 constexpr uint8_t kReportCapabilities = 0x10;
+constexpr uint8_t kReportFastButtons = 0x11;
+
+// The bits of report 0x11 that stand for a button here: SW1..SW6 and the
+// encoder's click, buttons 1 to 7.
+constexpr uint8_t kButtonBits = (1u << (pins::kSwitchCount + 1)) - 1;
 
 // --- the report descriptor --------------------------------------------------
 // A sequence of items. Most only fill in a value the reader keeps ("usage page",
@@ -83,6 +88,15 @@ const uint8_t kReportDescriptor[] = {
     0x95, 0x3F,                 //   Report Count (63)
     0xB1, 0x02,                 //   Feature (Data, Variable, Absolute)
 
+    // --- which buttons report at once: read and written by the PC ---------
+    // One bit per button, bit n for button n + 1; the value range is the one
+    // set for the capability block above.
+    0x85, kReportFastButtons,  //   Report ID (0x11)
+    0x09, 0x11,                //   Usage (0x11)
+    0x75, 0x08,                //   Report Size (8)
+    0x95, 0x01,                //   Report Count (1)
+    0xB1, 0x02,                //   Feature (Data, Variable, Absolute)
+
     // --- reserved for display data, PC to device ---------------------------
     0x85, 0x20,  //   Report ID (0x20)
     0x09, 0x20,  //   Usage (0x20)
@@ -139,6 +153,13 @@ uint16_t KeypadHid::_onGetFeature(uint8_t reportId, uint8_t* buffer, uint16_t le
   if (reportId == kReportInput) {
     return currentInput(buffer, length);
   }
+  if (reportId == kReportFastButtons) {
+    if (length < 1) {
+      return 0;
+    }
+    buffer[0] = fastButtons_;
+    return 1;
+  }
   if (reportId != kReportCapabilities) {
     return 0;
   }
@@ -181,6 +202,30 @@ uint16_t KeypadHid::_onGetFeature(uint8_t reportId, uint8_t* buffer, uint16_t le
   buffer[at++] = kEntryEnd;
   buffer[at++] = 0;
   return at;
+}
+
+void KeypadHid::_onSetFeature(uint8_t reportId, const uint8_t* buffer, uint16_t length) {
+  if (reportId != kReportFastButtons || length == 0) {
+    return;
+  }
+  // TinyUSB hands the report over without its id. Should a host's id still be
+  // in front of it, the byte after it is the setting.
+  const uint8_t mask = length > 1 && buffer[0] == kReportFastButtons ? buffer[1] : buffer[0];
+  // Taken at once, so the PC reading it back straight away sees what it set,
+  // without the bits of buttons this keypad does not have. The main loop
+  // applies it to the inputs and stores it.
+  fastButtons_ = mask & kButtonBits;
+  fastChanged_ = true;
+}
+
+void KeypadHid::setFastButtons(uint8_t mask) { fastButtons_ = mask & kButtonBits; }
+
+bool KeypadHid::takeFastButtons(uint8_t& mask) {
+  if (!fastChanged_.exchange(false)) {
+    return false;
+  }
+  mask = fastButtons_;
+  return true;
 }
 
 uint16_t KeypadHid::currentInput(uint8_t* buffer, uint16_t length) const {

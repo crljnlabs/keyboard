@@ -23,6 +23,12 @@ bool Switches::isPressed(uint8_t index) const {
   return inputs_[index].isPressed();
 }
 
+void Switches::setFast(uint8_t index, bool fast) {
+  if (index < pins::kSwitchCount) {
+    inputs_[index].setFast(fast);
+  }
+}
+
 uint8_t Switches::pressedCount() const {
   uint8_t pressed = 0;
   for (uint8_t i = 0; i < pins::kSwitchCount; ++i) {

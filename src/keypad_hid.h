@@ -21,6 +21,8 @@
 #include <Arduino.h>
 #include <USBHID.h>
 
+#include <atomic>
+
 #include "switches.h"
 
 class KeypadHid : public USBHIDDevice {
@@ -47,11 +49,20 @@ class KeypadHid : public USBHIDDevice {
   // main loop.
   void update();
 
+  // --- which buttons report at once: feature report 0x11 -------------------
+  // Bit n stands for button n + 1 of the report descriptor: SW1..SW6, then the
+  // encoder's click. This is what the keypad starts with, read from flash.
+  void setFastButtons(uint8_t mask);
+  // A setting the PC sent, once: true and the new mask when one came since the
+  // last call. Call from the main loop, which applies and stores it.
+  bool takeFastButtons(uint8_t& mask);
+
   bool connected();
 
   // --- USBHIDDevice ---------------------------------------------------------
   uint16_t _onGetDescriptor(uint8_t* buffer) override;
   uint16_t _onGetFeature(uint8_t reportId, uint8_t* buffer, uint16_t length) override;
+  void _onSetFeature(uint8_t reportId, const uint8_t* buffer, uint16_t length) override;
 
  private:
   // Report 0x01's payload as things stand: keys, button, no rotation.
@@ -67,4 +78,8 @@ class KeypadHid : public USBHIDDevice {
   uint8_t sentKeyMask_ = 0;
   bool sentEncoderButton_ = false;
   bool everSent_ = false;
+
+  // Written by the USB task when the PC sets them, read by the main loop.
+  std::atomic<uint8_t> fastButtons_{0};
+  std::atomic<bool> fastChanged_{false};
 };

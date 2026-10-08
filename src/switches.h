@@ -26,6 +26,9 @@ class Switches {
   // Debounced state of a single switch.
   bool isPressed(uint8_t index) const;
 
+  // Whether a switch reports its first edge at once - see DebouncedInput.
+  void setFast(uint8_t index, bool fast);
+
   // Number of switches currently held down.
   uint8_t pressedCount() const;
 
