@@ -1,6 +1,7 @@
 #include "keypad_hid.h"
 
 #include "display.h"
+#include "display_feed.h"
 
 namespace {
 
@@ -12,6 +13,7 @@ constexpr uint8_t kReportFastButtons = 0x11;
 // The bits of report 0x11 that stand for a button here: SW1..SW6 and the
 // encoder's click, buttons 1 to 7.
 constexpr uint8_t kButtonBits = (1u << (pins::kSwitchCount + 1)) - 1;
+constexpr uint8_t kReportDisplay = 0x20;
 
 // --- the report descriptor --------------------------------------------------
 // A sequence of items. Most only fill in a value the reader keeps ("usage page",
@@ -97,8 +99,8 @@ const uint8_t kReportDescriptor[] = {
     0x95, 0x01,                //   Report Count (1)
     0xB1, 0x02,                //   Feature (Data, Variable, Absolute)
 
-    // --- reserved for display data, PC to device ---------------------------
-    0x85, 0x20,  //   Report ID (0x20)
+    // --- display data, PC to device (display_feed.h) -----------------------
+    0x85, kReportDisplay,  //   Report ID (0x20)
     0x09, 0x20,  //   Usage (0x20)
     0x75, 0x08,  //   Report Size (8)
     0x95, 0x3F,  //   Report Count (63)
@@ -124,8 +126,10 @@ constexpr uint8_t kPixelFormatRgb565 = 1;
 constexpr uint16_t kPhysicalWidthTenthMm = 326;
 constexpr uint16_t kPhysicalHeightTenthMm = 279;
 
-// Bit 0: backlight is dimmable. Bit 1: accepts a full frame.
-constexpr uint8_t kDisplayFlags = 0b00000011;
+// Bit 0: backlight is dimmable. Bit 1: accepts a full frame. Bit 2: accepts a
+// partial rectangle. Bit 3: understands PackBits. Bit 4: collects rectangles
+// until "show". See display_feed.h.
+constexpr uint8_t kDisplayFlags = 0b00011111;
 
 }  // namespace
 
@@ -205,6 +209,13 @@ uint16_t KeypadHid::_onGetFeature(uint8_t reportId, uint8_t* buffer, uint16_t le
 }
 
 void KeypadHid::_onSetFeature(uint8_t reportId, const uint8_t* buffer, uint16_t length) {
+  // The core hands every SET_REPORT over the control pipe here, output
+  // reports included - a host without the OUT endpoint would send the
+  // display data this way.
+  if (reportId == kReportDisplay) {
+    _onOutput(reportId, buffer, length);
+    return;
+  }
   if (reportId != kReportFastButtons || length == 0) {
     return;
   }
@@ -226,6 +237,16 @@ bool KeypadHid::takeFastButtons(uint8_t& mask) {
   }
   mask = fastButtons_;
   return true;
+}
+
+void KeypadHid::attachDisplayFeed(DisplayFeed* feed) { feed_ = feed; }
+
+void KeypadHid::_onOutput(uint8_t reportId, const uint8_t* buffer, uint16_t length) {
+  // Written over the interrupt OUT endpoint, which is what hidapi uses on
+  // every system when the interface has one.
+  if (reportId == kReportDisplay && feed_ != nullptr) {
+    feed_->receive(buffer, length);
+  }
 }
 
 uint16_t KeypadHid::currentInput(uint8_t* buffer, uint16_t length) const {

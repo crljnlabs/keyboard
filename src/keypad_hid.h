@@ -25,6 +25,8 @@
 
 #include "switches.h"
 
+class DisplayFeed;
+
 class KeypadHid : public USBHIDDevice {
  public:
   // Registers the interface with the USB stack. This has to happen from a
@@ -59,9 +61,13 @@ class KeypadHid : public USBHIDDevice {
 
   bool connected();
 
+  // Where report 0x20 goes. Without one it is ignored.
+  void attachDisplayFeed(DisplayFeed* feed);
+
   // --- USBHIDDevice ---------------------------------------------------------
   uint16_t _onGetDescriptor(uint8_t* buffer) override;
   uint16_t _onGetFeature(uint8_t reportId, uint8_t* buffer, uint16_t length) override;
+  void _onOutput(uint8_t reportId, const uint8_t* buffer, uint16_t length) override;
   void _onSetFeature(uint8_t reportId, const uint8_t* buffer, uint16_t length) override;
 
  private:
@@ -69,6 +75,7 @@ class KeypadHid : public USBHIDDevice {
   uint16_t currentInput(uint8_t* buffer, uint16_t length) const;
 
   USBHID hid_;
+  DisplayFeed* feed_ = nullptr;
 
   // One bit per key, bit 0 = SW1.
   uint8_t keyMask_ = 0;

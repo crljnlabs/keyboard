@@ -3,12 +3,14 @@
 // Reads the six key switches and the rotary encoder, mirrors their state on the
 // TFT status screen, and reports them to the PC over a vendor-defined USB HID
 // interface. The PC can set single buttons to report at once; the keypad keeps
-// that in flash. Receiving display content from the PC is not implemented yet.
+// that in flash. What the PC sends for the display (report 0x20) replaces the
+// status screen until the PC hands it back.
 
 #include <Arduino.h>
 #include <Preferences.h>
 
 #include "display.h"
+#include "display_feed.h"
 #include "keypad_hid.h"
 #include "rotary_encoder.h"
 #include "status_screen.h"
@@ -18,6 +20,7 @@ namespace {
 
 Display display;
 StatusScreen screen(display);
+DisplayFeed feed(display);
 RotaryEncoder encoder;
 Switches switches;
 
@@ -54,6 +57,10 @@ void setup() {
   screen.begin();
   display.fadeBrightness(kBacklightBrightness, kBacklightFadeMs);
 
+  if (!feed.begin()) {
+    Serial.println("no memory for the display feed: the PC cannot draw");
+  }
+  keypadHid.attachDisplayFeed(&feed);
   keypadHid.begin();
 
   encoder.onRotate([](int8_t direction, int32_t position) {
@@ -84,7 +91,12 @@ void setup() {
 void loop() {
   encoder.update();
   switches.update();
-  screen.update();
+  if (feed.takeOwnScreenRequest()) {
+    screen.begin();
+  }
+  if (!feed.update()) {
+    screen.update();
+  }
   keypadHid.update();
 
   uint8_t fast = 0;
