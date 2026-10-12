@@ -12,9 +12,13 @@
 // The items *within* those collections do use standard usages - buttons on the
 // button page, the encoder as a dial - because they are not matching surface on
 // macOS, and because it lets software that has never heard of this device tell
-// the six keys and the encoder apart. Linux is less careful about this and maps
-// such items to input events regardless of the collection around them; moving
-// them to vendor usages too is what that would take.
+// the six keys and the encoder apart.
+//
+// What Linux makes of it has not been tried on a Linux machine yet. Reading
+// the kernel's hid-input, it looks for at least one collection with an input
+// usage (mouse, keyboard, joystick, ...) before it creates an input device at
+// all, and finds none here - but that is a reading, not a test. The test is in
+// anydeck's docs/testing.md.
 
 #pragma once
 
