@@ -17,7 +17,7 @@ Status in this firmware:
 | report `0x01`, input | sent |
 | report `0x10`, capability block | answered |
 | report `0x11`, fast buttons | answered and taken, kept in flash |
-| report `0x20`, display data | received: rectangles raw or PackBits, show, brightness, own screen |
+| report `0x20`, display data | received: pieces, places, show, brightness, own screen |
 
 What anydeck does with each of them today is in the contract's last section.
 
@@ -191,7 +191,7 @@ On the wire, after the report id:
 | | 7 | corner radius in pixels | `43` |
 | | 8..9 | physical width, tenths of a millimetre | `326` |
 | | 10..11 | physical height, tenths of a millimetre | `279` |
-| | 12 | capability flags | `0b0001_1111` |
+| | 12 | capability flags | `0b0010_0001` |
 
 All 13 bytes of the display entry are sent, so no default applies anywhere.
 
@@ -205,10 +205,9 @@ orientation. The corner radius of `43` was measured from a photo of the panel -
 all four corners came out at 42 to 44 px - and confirmed on the device, where an
 arc of that radius ran along the edge of the glass (`Display::kCornerRadius`).
 
-The flags say: the backlight can be dimmed (bit 0), the display takes full
-frames (bit 1) and partial rectangles (bit 2), understands PackBits (bit 3) and
-collects rectangles until "show" (bit 4). Bits 3 and 4 are this device's
-proposal for the contract; anydeck documents them once it uses them.
+The flags say: the backlight can be dimmed (bit 0) and the display puts pieces
+together (bit 5, report `0x20` below). Bits 1 to 4 stood for pixel rectangles,
+which the display no longer takes; they are 0.
 
 ## Report 0x11 — fast buttons, feature, read and written by the PC
 
@@ -234,39 +233,54 @@ keypad keeps the setting after a power cut, with or without a PC.
 
 ## Report 0x20 — display data, output, PC to device
 
-The PC draws, the device shows. Every packet is one report `0x20` of 63 bytes;
-the first byte says what it is (`src/display_feed.h`):
+The PC draws, the device puts together. The PC sends pieces - pictures with
+transparency, already drawn - and where each goes; the device keeps them and
+lays them over each other. It knows nothing of what a piece shows: a moved
+piece is a new place, a faded one a new opacity, a bar's value the share of its
+fill to show. Every packet is one report `0x20` of 63 bytes; the first byte
+says what it is (`src/display_feed.h`):
 
 | Byte 0 | Packet | Payload |
 |---|---|---|
-| `0x01` | rectangle | display (1), x, y, width, height (2 each, little endian), encoding (1: `0` raw, `1` PackBits), data length in bytes (4) |
-| `0x02` | data | number within the rectangle, from 0 (2), then up to 60 bytes of data |
-| `0x03` | show | everything received since the last show appears at once |
+| `0x02` | data | number within the piece, from 0 (2), then up to 60 bytes |
+| `0x03` | show | what changed since the last show appears at once |
 | `0x04` | brightness | display (1), 0..255 |
 | `0x05` | own screen | the device draws its status screen again |
+| `0x06` | clear | display (1): every piece gone |
+| `0x07` | piece | display, id (1 each), x, y (2 each, signed), width, height (2 each), alpha (1: `0` none, `1` one byte per pixel), length of the colours, length of the alpha (4 each) |
+| `0x08` | place | display, id (1 each), x, y (2 each, signed), opacity (1, 0..255), reveal (1), amount (2, 0..65535), start, sweep (2 each, degrees, signed), centre x, centre y (2 each, from the piece's corner) |
+| `0x09` | remove | display, id (1 each) |
 
-- Pixels are RGB565, little endian.
-- PackBits works on whole pixels: a header byte n of 0..127 is followed by
-  n + 1 literal pixels, 128..255 by one pixel repeated n - 126 times. A pixel
-  or a run may span two packets.
-- A raw rectangle's data length must be width x height x 2, or the rectangle
-  is refused. A rectangle outside the display, of display index other than 0,
-  or of an unknown encoding is refused too.
-- A data packet whose number is not the next one drops the rectangle. Its
-  pixels that arrived stay in the frame buffer but are not shown until a
-  later rectangle covers them.
-- The packets are decoded on the USB task into a frame buffer of 134400 bytes
-  in PSRAM. The main loop pushes the area that changed to the panel at "show",
-  row by row. Until the first "show", and after "own screen", the status
-  screen is drawn as before.
+- All numbers little endian. Colours are RGB565, PackBits on whole pixels: a
+  header byte n of 0..127 is followed by n + 1 literal pixels, 128..255 by one
+  pixel repeated n - 126 times. The alpha follows the colours, PackBits the
+  same way on bytes. A value or a run may span two packets.
+- Ids 0 to 63. Pieces are drawn in the order of their ids, 0 at the bottom; the
+  PC sends the background as piece 0. A piece sent again under its id keeps its
+  opacity and share and takes the new x and y. A place for an id that holds no
+  piece is ignored.
+- Reveal, the share that shows (amount / 65535 of it): `0` all, `1` from the
+  left, `2` from the bottom, `3` from the right, `4` from the top - rounded to
+  whole rows or columns, (size x amount + 32767) / 65535 of them - and `5`
+  clockwise from `start` over `sweep` degrees around the centre, by the angle
+  of each pixel's middle (0° points right, angles grow clockwise).
+- Opacity multiplies a pixel's alpha: alpha x opacity / 255. A pixel is laid
+  over what is below it per RGB565 component.
+- A data packet whose number is not the next one, data that runs out before
+  the pixels do, or no memory for the piece: the piece is not taken, what was
+  under its id stays.
+- Pieces live in PSRAM, decoded on the USB task. The main loop puts together
+  the area that changed into a frame buffer of 134400 bytes at "show" and
+  pushes it to the panel row by row. Memory of a replaced piece is freed by the
+  main loop, once nothing draws with it. Until the first "show", and after
+  "own screen", the status screen is drawn as before.
 - Unknown commands are ignored.
 - Arrival: hidapi writes over the interrupt OUT endpoint (64 bytes, 1 ms),
   which the core hands to `_onOutput`. A SET_REPORT over the control pipe
   arrives in `_onSetFeature`; both go to the same place.
 
-A full frame raw is 134400 bytes, about 2240 packets - roughly two seconds at
-one packet per millisecond. Measuring the real rate is the first thing anydeck
-does with this.
+At one packet per millisecond a full background of flat areas is well under a
+second, a photo about two; a place is one packet.
 
 ## See also
 

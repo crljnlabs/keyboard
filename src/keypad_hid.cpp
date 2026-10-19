@@ -126,10 +126,10 @@ constexpr uint8_t kPixelFormatRgb565 = 1;
 constexpr uint16_t kPhysicalWidthTenthMm = 326;
 constexpr uint16_t kPhysicalHeightTenthMm = 279;
 
-// Bit 0: backlight is dimmable. Bit 1: accepts a full frame. Bit 2: accepts a
-// partial rectangle. Bit 3: understands PackBits. Bit 4: collects rectangles
-// until "show". See display_feed.h.
-constexpr uint8_t kDisplayFlags = 0b00011111;
+// Bit 0: backlight is dimmable. Bit 5: puts pieces together (report 0x20 as
+// display_feed.h describes it). Bits 1 to 4 meant pixel rectangles, which the
+// display no longer takes.
+constexpr uint8_t kDisplayFlags = 0b00100001;
 
 }  // namespace
 
