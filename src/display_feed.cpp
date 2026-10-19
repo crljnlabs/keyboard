@@ -132,6 +132,7 @@ void DisplayFeed::beginPiece(const uint8_t* payload, uint16_t length) {
   incoming_.colours = static_cast<uint16_t*>(bigAlloc(pixels * sizeof(uint16_t)));
   incoming_.alpha = alpha ? static_cast<uint8_t*>(bigAlloc(pixels)) : nullptr;
   if (incoming_.colours == nullptr || (alpha && incoming_.alpha == nullptr)) {
+    ++refusedForMemory_;
     dropIncoming();  // no room: the piece is not taken, what was there stays
     return;
   }
@@ -157,6 +158,7 @@ void DisplayFeed::data(const uint8_t* payload, uint16_t length) {
     return;
   }
   if (le16(payload) != nextNumber_) {
+    ++dropped_;
     dropIncoming();  // a packet went missing: the piece is not taken
     return;
   }
@@ -164,6 +166,7 @@ void DisplayFeed::data(const uint8_t* payload, uint16_t length) {
   const uint32_t total = static_cast<uint32_t>(incoming_.w) * incoming_.h;
   for (uint16_t i = 2; i < length && receiving_; ++i) {
     if (bytesLeft_ == 0) {
+      ++dropped_;
       dropIncoming();  // the data ran out before the pixels did
       return;
     }

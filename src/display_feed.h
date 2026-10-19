@@ -66,6 +66,11 @@ class DisplayFeed {
 
   static constexpr uint8_t kMaxPieces = 64;
 
+  // For the serial report: pieces refused for want of memory, and dropped
+  // because a packet was missing or the data ran out.
+  uint32_t refusedForMemory() const { return refusedForMemory_; }
+  uint32_t dropped() const { return dropped_; }
+
  private:
   struct Piece {
     bool used = false;
@@ -138,4 +143,7 @@ class DisplayFeed {
   uint16_t garbageCount_ = 0;
 
   bool active_ = false;  // the PC's picture is on the panel (loop only)
+
+  volatile uint32_t refusedForMemory_ = 0;
+  volatile uint32_t dropped_ = 0;
 };

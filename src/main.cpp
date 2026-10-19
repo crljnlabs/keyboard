@@ -7,6 +7,8 @@
 // status screen until the PC hands it back.
 
 #include <Arduino.h>
+#include <esp_heap_caps.h>
+#include <esp_system.h>
 #include <Preferences.h>
 
 #include "display.h"
@@ -48,9 +50,53 @@ void applyFastButtons(uint8_t mask) {
   encoder.setButtonFast(mask & (1u << Switches::count()));
 }
 
+// Why the chip started last, for the serial report: a crash or a watchdog
+// shows here, a plain power-on too.
+esp_reset_reason_t startedBecause = ESP_RST_UNKNOWN;
+
+const char* reasonName(esp_reset_reason_t reason) {
+  switch (reason) {
+    case ESP_RST_POWERON: return "power on";
+    case ESP_RST_SW: return "restart by software";
+    case ESP_RST_PANIC: return "crash (panic)";
+    case ESP_RST_INT_WDT: return "interrupt watchdog";
+    case ESP_RST_TASK_WDT: return "task watchdog";
+    case ESP_RST_WDT: return "other watchdog";
+    case ESP_RST_BROWNOUT: return "brownout (too little power)";
+    case ESP_RST_DEEPSLEEP: return "wake from deep sleep";
+    default: return "unknown";
+  }
+}
+
+// Once a serial monitor is open, and every 10 s while it is: why the chip
+// started, how much memory is free, what the display feed refused. Nothing
+// goes out while no one listens - CDC needs the host to open the port.
+void reportOverSerial() {
+  static bool listening = false;
+  static uint32_t lastMs = 0;
+  const bool now = static_cast<bool>(Serial);
+  if (!now) {
+    listening = false;
+    return;
+  }
+  if (listening && millis() - lastMs < 10000) {
+    return;
+  }
+  listening = true;
+  lastMs = millis();
+  Serial.printf("started because: %s (%d), up %lu s\n", reasonName(startedBecause),
+                static_cast<int>(startedBecause), static_cast<unsigned long>(millis() / 1000));
+  Serial.printf("free: internal %u B (largest %u), PSRAM %u B (largest %u)\n",
+                heap_caps_get_free_size(MALLOC_CAP_INTERNAL), heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
+                heap_caps_get_free_size(MALLOC_CAP_SPIRAM), heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM));
+  Serial.printf("display feed: %lu refused for memory, %lu dropped\n",
+                static_cast<unsigned long>(feed.refusedForMemory()), static_cast<unsigned long>(feed.dropped()));
+}
+
 }  // namespace
 
 void setup() {
+  startedBecause = esp_reset_reason();
   Serial.begin(115200);
 
   display.begin();
@@ -98,6 +144,7 @@ void loop() {
     screen.update();
   }
   keypadHid.update();
+  reportOverSerial();
 
   uint8_t fast = 0;
   if (keypadHid.takeFastButtons(fast)) {
