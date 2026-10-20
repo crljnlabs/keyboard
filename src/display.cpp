@@ -4,9 +4,9 @@
 
 namespace {
 
-// LEDC settings for the backlight. Channel 0 is free; 5 kHz is well above the
-// audible range and far below what would make the panel's LED driver unhappy.
-constexpr uint8_t kBacklightChannel = 0;
+// LEDC settings for the backlight. 5 kHz is well above the audible range and
+// far below what would make the panel's LED driver unhappy. The core picks the
+// channel itself and addresses it by pin from then on.
 constexpr uint32_t kBacklightFrequency = 5000;
 constexpr uint8_t kBacklightResolutionBits = 8;
 
@@ -27,8 +27,7 @@ void Display::begin() {
   // Backlight before the panel, and before anything that could block: see
   // kAliveBrightness for why this is worth a brief glimpse of the panel's
   // uninitialised content.
-  ledcSetup(kBacklightChannel, kBacklightFrequency, kBacklightResolutionBits);
-  ledcAttachPin(pins::kTftBacklight, kBacklightChannel);
+  ledcAttach(pins::kTftBacklight, kBacklightFrequency, kBacklightResolutionBits);
   setBrightness(kAliveBrightness);
 
   tft_.init();
@@ -38,7 +37,7 @@ void Display::begin() {
 
 void Display::setBrightness(uint8_t brightness) {
   brightness_ = brightness;
-  ledcWrite(kBacklightChannel, brightness);
+  ledcWrite(pins::kTftBacklight, brightness);
 }
 
 void Display::fadeBrightness(uint8_t target, uint16_t durationMs) {

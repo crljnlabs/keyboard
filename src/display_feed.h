@@ -43,6 +43,8 @@
 
 #include <Arduino.h>
 
+#include <atomic>
+
 #include "display.h"
 
 class DisplayFeed {
@@ -144,6 +146,6 @@ class DisplayFeed {
 
   bool active_ = false;  // the PC's picture is on the panel (loop only)
 
-  volatile uint32_t refusedForMemory_ = 0;
-  volatile uint32_t dropped_ = 0;
+  std::atomic<uint32_t> refusedForMemory_{0};
+  std::atomic<uint32_t> dropped_{0};
 };

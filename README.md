@@ -59,8 +59,11 @@ them. Nothing is published yet.
 ## Technology
 
 - C++ with PlatformIO and the Arduino framework, for the ESP32-S3 Super Mini
-  (module ESP32-S3FH4R2: 4 MB flash, 2 MB PSRAM). The platform is pinned,
-  `espressif32@6.12.0` with Arduino core 2.0.17, so a build is reproducible.
+  (module ESP32-S3FH4R2: 4 MB flash, 2 MB PSRAM). The platform is pioarduino's,
+  pinned to Arduino core 3.3.12 (ESP-IDF 5.5.5), so a build is reproducible.
+  PlatformIO's own platform ends at core 2.0.17, whose USB driver dropped the
+  keypad off the bus while reports and display packets crossed;
+  `platformio.ini` says more.
 - USB through TinyUSB (`ARDUINO_USB_MODE=0`), which a vendor-defined HID
   interface needs; the serial port sits next to it on the same device.
 - The display, an ST7789 panel, through TFT_eSPI, configured only through build

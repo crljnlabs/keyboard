@@ -42,14 +42,14 @@ class RotaryEncoder {
  private:
   // Interrupt entry point. Registered for both quadrature pins, so every edge
   // on either of them advances the state machine.
-  static void IRAM_ATTR onQuadratureEdge(void* arg);
+  static void onQuadratureEdge(void* arg);
 
   // Reads both quadrature pins into the index the transition table expects.
-  static uint8_t IRAM_ATTR sampleLevels();
+  static uint8_t sampleLevels();
 
   // Advances the state machine from the current pin levels and, on a completed
   // detent, adds to pendingSteps_. Runs in interrupt context.
-  void IRAM_ATTR decode();
+  void decode();
 
   DebouncedInput button_;
 
