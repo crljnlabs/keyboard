@@ -4,6 +4,12 @@
 #include "display.h"
 #include "display_feed.h"
 
+// Temporary: which USB test this build is (0 = none). Set with
+// PLATFORMIO_BUILD_FLAGS=-DKEYPAD_USB_TEST=n.
+#ifndef KEYPAD_USB_TEST
+#define KEYPAD_USB_TEST 0
+#endif
+
 namespace {
 
 // --- report ids -------------------------------------------------------------
@@ -300,6 +306,18 @@ void KeypadHid::update() {
 
   const bool changed = !everSent_ || keyMask_ != sentKeyMask_ ||
                        encoderButton_ != sentEncoderButton_ || pendingRotation_ != 0;
+#if KEYPAD_USB_TEST == 1
+  // USB test 1: the knob is read, nothing is reported.
+  (void)changed;
+  return;
+#elif KEYPAD_USB_TEST == 2
+  // USB test 2: a report every 10 ms, knob or not, display packets or not.
+  static uint32_t lastTestMs = 0;
+  if (millis() - lastTestMs < 10 || !hid_.ready()) {
+    return;
+  }
+  lastTestMs = millis();
+#else
   if (!changed || !hid_.ready()) {
     return;
   }
@@ -307,6 +325,7 @@ void KeypadHid::update() {
   if (micros() - lastOutputUs_.load() < 3000) {
     return;
   }
+#endif
 
   // One report carries at most a full byte of rotation. Anything beyond that
   // stays in the accumulator and goes out with the next report rather than being
