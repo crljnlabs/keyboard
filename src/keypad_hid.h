@@ -90,22 +90,6 @@ class KeypadHid : public USBHIDDevice {
   bool sentEncoderButton_ = false;
   bool everSent_ = false;
 
-  // The report handed to the USB task to send - sent there, not from the main
-  // loop: TinyUSB is not made for two tasks at once, and a report sent from
-  // the loop while the USB task took display packets threw the keypad off
-  // the bus now and then. 0 nothing queued, 1 queued, 2 sent, 3 not taken.
-  static void sendQueued(void* self);
-  uint8_t queued_[3] = {};
-  int16_t queuedRotation_ = 0;
-  uint8_t queuedKeyMask_ = 0;
-  bool queuedEncoderButton_ = false;
-  std::atomic<uint8_t> sendState_{0};
-
-  // When the last display packet came in (micros). While they stream in, a
-  // report waits for the next gap: this core's USB driver lost the bus now
-  // and then when a report went out while OUT packets arrived.
-  std::atomic<uint32_t> lastOutputUs_{0};
-
   // Written by the USB task when the PC sets them, read by the main loop.
   std::atomic<uint8_t> fastButtons_{0};
   std::atomic<bool> fastChanged_{false};

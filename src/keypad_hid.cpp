@@ -1,13 +1,12 @@
 #include "keypad_hid.h"
 
-#include "device/usbd_pvt.h"
 #include "display.h"
 #include "display_feed.h"
 
-// Temporary: which USB test this build is (0 = none). Set with
-// PLATFORMIO_BUILD_FLAGS=-DKEYPAD_USB_TEST=n.
-#ifndef KEYPAD_USB_TEST
-#define KEYPAD_USB_TEST 0
+// 1 builds the USB stress test (see update()):
+// PLATFORMIO_BUILD_FLAGS=-DKEYPAD_USB_STRESS=1 python3 scripts/flash.py
+#ifndef KEYPAD_USB_STRESS
+#define KEYPAD_USB_STRESS 0
 #endif
 
 namespace {
@@ -252,7 +251,6 @@ void KeypadHid::_onOutput(uint8_t reportId, const uint8_t* buffer, uint16_t leng
   // Written over the interrupt OUT endpoint, which is what hidapi uses on
   // every system when the interface has one.
   if (reportId == kReportDisplay && feed_ != nullptr) {
-    lastOutputUs_.store(micros());
     feed_->receive(buffer, length);
   }
 }
@@ -283,46 +281,21 @@ void KeypadHid::setEncoderButton(bool pressed) { encoderButton_ = pressed; }
 
 void KeypadHid::addRotation(int8_t detents) { pendingRotation_ += detents; }
 
-void KeypadHid::sendQueued(void* self) {
-  // On the USB task, the only one that talks to TinyUSB.
-  auto* hid = static_cast<KeypadHid*>(self);
-  const bool taken = tud_hid_n_report(0, kReportInput, hid->queued_, sizeof(hid->queued_));
-  hid->sendState_.store(taken ? 2 : 3);
-}
-
 void KeypadHid::update() {
-  // What became of the report handed over last time.
-  const uint8_t state = sendState_.load();
-  if (state == 1) {
-    return;  // the USB task has not got to it yet
-  }
-  if (state == 2) {
-    pendingRotation_ -= queuedRotation_;
-    sentKeyMask_ = queuedKeyMask_;
-    sentEncoderButton_ = queuedEncoderButton_;
-    everSent_ = true;
-  }
-  sendState_.store(0);
-
   const bool changed = !everSent_ || keyMask_ != sentKeyMask_ ||
                        encoderButton_ != sentEncoderButton_ || pendingRotation_ != 0;
-#if KEYPAD_USB_TEST == 1
-  // USB test 1: the knob is read, nothing is reported.
+#if KEYPAD_USB_STRESS
+  // A report every 10 ms whether anything changed or not, to check that reports
+  // and display packets at the same time keep the keypad on the bus. Core
+  // 2.0.17's USB driver lost it within 0.5 to 10 s of this.
   (void)changed;
-  return;
-#elif KEYPAD_USB_TEST == 2
-  // USB test 2: a report every 10 ms, knob or not, display packets or not.
-  static uint32_t lastTestMs = 0;
-  if (millis() - lastTestMs < 10 || !hid_.ready()) {
+  static uint32_t lastStressMs = 0;
+  if (millis() - lastStressMs < 10 || !hid_.ready()) {
     return;
   }
-  lastTestMs = millis();
+  lastStressMs = millis();
 #else
   if (!changed || !hid_.ready()) {
-    return;
-  }
-  // Display packets streaming in: wait for a gap of 3 ms.
-  if (micros() - lastOutputUs_.load() < 3000) {
     return;
   }
 #endif
@@ -337,12 +310,11 @@ void KeypadHid::update() {
     rotation = -127;
   }
 
-  queued_[0] = keyMask_;
-  queued_[1] = static_cast<uint8_t>(encoderButton_ ? 1 : 0);
-  queued_[2] = static_cast<uint8_t>(static_cast<int8_t>(rotation));
-  queuedRotation_ = rotation;
-  queuedKeyMask_ = keyMask_;
-  queuedEncoderButton_ = encoderButton_;
+  const uint8_t payload[] = {
+      keyMask_,
+      static_cast<uint8_t>(encoderButton_ ? 1 : 0),
+      static_cast<uint8_t>(static_cast<int8_t>(rotation)),
+  };
   // Queued is sent. tud_hid_n_report() hands the report to the endpoint and
   // returns at once; it fails only when the endpoint is still busy or the host
   // is not listening, and then nothing went out. USBHID::SendReport() wraps the
@@ -350,8 +322,12 @@ void KeypadHid::update() {
   // when that wait runs out - with the report already on its way. Kept and sent
   // again, the same rotation arrived twice. Not waiting also means a slow host
   // can no longer hold this loop for 100 ms.
-  // Sent on the USB task; the next pass sees whether it was taken - if not,
-  // nothing went out, the state stays and it goes again.
-  sendState_.store(1);
-  usbd_defer_func(&KeypadHid::sendQueued, this, false);
+  if (!tud_hid_n_report(0, kReportInput, payload, sizeof(payload))) {
+    return;  // nothing went out; keep the state and try again next pass
+  }
+
+  pendingRotation_ -= rotation;
+  sentKeyMask_ = keyMask_;
+  sentEncoderButton_ = encoderButton_;
+  everSent_ = true;
 }
