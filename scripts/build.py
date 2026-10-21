@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Compile the firmware and store the result under build/<build id>/.
 
-Asks nothing. A build is not a release: it has no version number, only a
+Asks nothing. Fetches the anydeck library's newest commit first, when it
+comes from git. A build is not a release: it has no version number, only a
 timestamp id, and it lives in build/ which is git-ignored. Choosing a version
 and publishing is deploy.py's job.
 
@@ -27,6 +28,7 @@ def build(environment: str | None = None) -> dict:
     environment = environment or common.default_environment()
     build_id = common.new_build_id()
 
+    common.update_anydeck_library(environment)
     common.info(f"Building {build_id} (environment: {environment})")
     common.run([
         common.pio_executable(), "run",

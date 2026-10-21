@@ -14,29 +14,37 @@ key does is up to the program on the PC,
 
 The firmware itself is short: `src/main.cpp` names the keypad's parts, and the
 [anydeck library](https://github.com/crljnlabs/anydeck-library) does
-everything between them and the PC. The library is expected in a folder next to
-this one, `../anydeck-library`; PlatformIO links it from there.
+everything between them and the PC. PlatformIO fetches it from GitHub.
 
 ## What the firmware does
 
 - Reads the six keys and the encoder, and reports them to the PC.
 - Tells the PC what it is made of, the display included.
-- Shows on the display what the PC sends, put together from pieces.
-- Shows a status screen of its own until then: the encoder's position and last
-  direction, and which keys are held.
+- Plays anydeck's intro on the display at the start, then shows what the PC
+  sends, put together from pieces.
+- Shows a status screen of its own while the PC does not draw: the encoder's
+  position and last direction, and which keys are held.
+- Sleeps: the display after 5 minutes on its own screen, the whole keypad
+  while the Mac sleeps; a key wakes the Mac if the Mac allows it.
 - Logs over the same USB cable, as a serial port.
 
 ## Building and flashing
 
-Needs Python 3, PlatformIO (`pio`) and the anydeck library next to this
-repository:
+Needs Python 3 and PlatformIO (`pio`). Everything else - the toolchain, the
+anydeck library, TFT_eSPI, esptool - PlatformIO fetches itself on the first
+build. Before every build the scripts fetch the anydeck library's newest
+commit, and the build's `manifest.json` says which one went in.
+
+Working on the library at the same time: clone it next to this repository and
+link it instead, so every change there is in the next build here.
 
 ```bash
 git clone https://github.com/crljnlabs/anydeck-library.git ../anydeck-library
 ```
 
-Everything else - the toolchain, TFT_eSPI, esptool - PlatformIO fetches itself
-on the first build.
+```ini
+lib_deps = symlink://../anydeck-library
+```
 
 ```bash
 python3 scripts/flash.py
