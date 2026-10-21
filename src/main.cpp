@@ -40,6 +40,9 @@ anydeck::Display screen({
     .physicalHeightTenthMm = 279,
     .brightness = 220,
     .fadeInMs = 400,
+    // Only while the keypad shows its own status screen: once anydeck draws,
+    // anydeck decides when the display sleeps.
+    .sleepAfterMs = 5 * 60 * 1000,
 });
 
 }  // namespace
@@ -47,8 +50,9 @@ anydeck::Display screen({
 // The product is the name the keypad gives itself over USB, and so its name in
 // anydeck until somebody renames it. The manufacturer is who made the keypad,
 // not its chip: crljn.labs, as the LICENSE has it. The ids stay Espressif's,
-// the serial number the chip's MAC address.
-Anydeck keypad({.manufacturer = "crljn.labs", .product = "crljn-board"},  //
+// the serial number the chip's MAC address. While the Mac sleeps, a key or a
+// turn wakes it, if the Mac allows that.
+Anydeck keypad({.manufacturer = "crljn.labs", .product = "crljn-board", .canWakeComputer = true},  //
                sw1, sw2, sw3, sw4, sw5, sw6, knob, screen);
 
 void setup() { keypad.begin(); }
