@@ -27,8 +27,8 @@ What anydeck does with each of them today is in the contract's last section.
 |---|---|---|
 | vendor id | `0x303A` | the Arduino core's `esp32s3` variant |
 | product id | `0x1001` | the Arduino core's `esp32s3` variant |
-| manufacturer | `crljn.labs` | `USB_MANUFACTURER` in `platformio.ini` |
-| product | `crljn-board` | `USB_PRODUCT` in `platformio.ini` |
+| manufacturer | `crljn.labs` | `src/main.cpp` |
+| product | `crljn-board` | `src/main.cpp` |
 | serial number | the chip's MAC address | the Arduino core's default |
 
 The product and the manufacturer are set by this project. The serial number
@@ -129,7 +129,8 @@ window, although the application collection around it was vendor-defined:
 macOS publishes the usage of every application *and* every physical collection,
 and its keyboard driver matches on them. Vendor usages `0x02` and `0x03` keep
 it out, and cost nothing - what an element is follows from the items inside a
-collection, never from its label. `src/keypad_hid.cpp` has the full account.
+collection, never from its label. The anydeck library's `src/anydeck/Layout.cpp`
+has the full account.
 
 ### Listed three times on macOS
 
@@ -227,7 +228,7 @@ no such setting: its state machine needs no waiting.
 
 A SET_REPORT takes effect at once - a GET_REPORT straight after it answers with
 what was set, bit 7 cleared - and the main loop applies it to the inputs and
-stores it in flash, NVS namespace `keypad`, key `fast-buttons`. Written only
+stores it in flash, NVS namespace `anydeck`, key `fast-buttons`, one byte. Written only
 when the PC sends it, so the flash does not wear; read at every start, so the
 keypad keeps the setting after a power cut, with or without a PC.
 
@@ -238,7 +239,7 @@ transparency, already drawn - and where each goes; the device keeps them and
 lays them over each other. It knows nothing of what a piece shows: a moved
 piece is a new place, a faded one a new opacity, a bar's value the share of its
 fill to show. Every packet is one report `0x20` of 63 bytes; the first byte
-says what it is (`src/display_feed.h`):
+says what it is (the anydeck library's `src/anydeck/DisplayFeed.h`):
 
 | Byte 0 | Packet | Payload |
 |---|---|---|
@@ -287,6 +288,7 @@ second, a photo about two; a place is one packet.
 - anydeck's device contract, `docs/device-protocol.md` in the anydeck
   repository: the rules this file follows, the capability block's format with
   all its defaults, and how anydeck finds and reads a device.
-- `src/keypad_hid.cpp`: the descriptor, the capability block and report `0x11`
-  as the firmware builds them; `src/debounced_input.h` for the two ways a
-  button is debounced.
+- The anydeck library (`../anydeck-library`), which builds all of this from
+  the parts `src/main.cpp` names: `src/anydeck/Layout.cpp` the descriptor,
+  `src/anydeck/Device.cpp` the reports, the capability block and report
+  `0x11`, `src/anydeck/DebouncedInput.h` the two ways a button is debounced.

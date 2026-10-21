@@ -12,20 +12,31 @@ key does is up to the program on the PC,
 
 - What the keypad says over USB, byte for byte: [docs/hid.md](docs/hid.md)
 
+The firmware itself is short: `src/main.cpp` names the keypad's parts, and the
+[anydeck library](https://github.com/crljnlabs/anydeck-library) does
+everything between them and the PC. The library is expected in a folder next to
+this one, `../anydeck-library`; PlatformIO links it from there.
+
 ## What the firmware does
 
 - Reads the six keys and the encoder, and reports them to the PC.
 - Tells the PC what it is made of, the display included.
-- Shows a status screen of its own: the encoder's position and last direction,
-  and which keys are held.
+- Shows on the display what the PC sends, put together from pieces.
+- Shows a status screen of its own until then: the encoder's position and last
+  direction, and which keys are held.
 - Logs over the same USB cable, as a serial port.
-
-Not yet: showing on the display what the PC sends.
 
 ## Building and flashing
 
-Needs Python 3 and PlatformIO (`pio`). Everything else - the toolchain, the
-libraries, esptool - PlatformIO fetches itself on the first build.
+Needs Python 3, PlatformIO (`pio`) and the anydeck library next to this
+repository:
+
+```bash
+git clone https://github.com/crljnlabs/anydeck-library.git ../anydeck-library
+```
+
+Everything else - the toolchain, TFT_eSPI, esptool - PlatformIO fetches itself
+on the first build.
 
 ```bash
 python3 scripts/flash.py
@@ -73,7 +84,7 @@ them. Nothing is published yet.
 
 | | |
 |---|---|
-| `src/` | the firmware |
+| `src/main.cpp` | the firmware: which parts the keypad has, on which pins |
 | `include/pins.h` | every GPIO the firmware touches, and why the pins do not match the schematic's net names |
 | `platformio.ini` | the board, the USB setup and the display configuration |
 | `docs/` | the USB protocol |
