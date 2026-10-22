@@ -1,95 +1,60 @@
-// Firmware entry point.
-//
-// Reads the six key switches and the rotary encoder, mirrors their state on the
-// TFT status screen, and reports them to the PC over a vendor-defined USB HID
-// interface. The PC can set single buttons to report at once; the keypad keeps
-// that in flash. Receiving display content from the PC is not implemented yet.
+// The crljn keypad: six keys, a rotary encoder with a push button and a 1.69"
+// display, as an anydeck device. Everything between the keypad and the PC is
+// the anydeck library's (../anydeck-library); this file only says what the
+// keypad is made of. The display's driver and SPI pins are TFT_eSPI build
+// flags in platformio.ini.
 
 #include <Arduino.h>
-#include <Preferences.h>
+#include <Anydeck.h>
 
-#include "display.h"
-#include "keypad_hid.h"
-#include "rotary_encoder.h"
-#include "status_screen.h"
-#include "switches.h"
+#include "pins.h"
 
 namespace {
 
-Display display;
-StatusScreen screen(display);
-RotaryEncoder encoder;
-Switches switches;
+// SW1..SW3 on the top row, SW4..SW6 below, as they sit on the board. Their
+// order here is the order anydeck numbers them in.
+anydeck::Key sw1(pins::kSwitches[0]);
+anydeck::Key sw2(pins::kSwitches[1]);
+anydeck::Key sw3(pins::kSwitches[2]);
+anydeck::Key sw4(pins::kSwitches[3]);
+anydeck::Key sw5(pins::kSwitches[4]);
+anydeck::Key sw6(pins::kSwitches[5]);
 
-// Global on purpose, not a local of setup(): its constructor registers the HID
-// interface, and the Arduino core starts USB in app_main - before setup() runs.
-// A global constructor is the last moment at which the report descriptor can
-// still be added.
-KeypadHid keypadHid;
+// CLK and DT reach the processor the other way round on this board, so the
+// encoder's A is DT and its B is CLK: that way clockwise counts up.
+anydeck::RotaryEncoder knob(pins::kEncoderB, pins::kEncoderA, pins::kEncoderButton);
 
-constexpr uint8_t kBacklightBrightness = 220;
-constexpr uint16_t kBacklightFadeMs = 400;
-
-// Which buttons report at once, kept in flash: the setting outlives a power cut
-// and needs no PC to come back.
-Preferences settings;
-constexpr const char* kSettingsNamespace = "keypad";
-constexpr const char* kFastButtonsKey = "fast-buttons";
-
-// Bit n is button n + 1 of the report descriptor: SW1..SW6, then the encoder's
-// click.
-void applyFastButtons(uint8_t mask) {
-  for (uint8_t i = 0; i < Switches::count(); ++i) {
-    switches.setFast(i, mask & (1u << i));
-  }
-  encoder.setButtonFast(mask & (1u << Switches::count()));
-}
+// Landscape, pin header on the right of the image: the module plugs into a
+// vertical header at the board's right edge and its panel extends leftwards,
+// so the 280 pixel axis runs horizontally. 1 is the same landscape mirrored,
+// 0 and 2 are portrait.
+//
+// The glass hides the corners: their rounding has a radius of 43 px,
+// measured from a photo of the panel (all four corners 42-44 px). The visible
+// area is 32.6 by 27.9 mm in this orientation.
+anydeck::Display screen({
+    .rotation = 3,
+    .backlightPin = pins::kTftBacklight,
+    .cornerRadius = 43,
+    .physicalWidthTenthMm = 326,
+    .physicalHeightTenthMm = 279,
+    .brightness = 220,
+    .fadeInMs = 400,
+    // Only while the keypad shows its own status screen: once anydeck draws,
+    // anydeck decides when the display sleeps.
+    .sleepAfterMs = 5 * 60 * 1000,
+});
 
 }  // namespace
 
-void setup() {
-  Serial.begin(115200);
+// The product is the name the keypad gives itself over USB, and so its name in
+// anydeck until somebody renames it. The manufacturer is who made the keypad,
+// not its chip: crljn.labs, as the LICENSE has it. The ids stay Espressif's,
+// the serial number the chip's MAC address. While the Mac sleeps, a key or a
+// turn wakes it, if the Mac allows that.
+Anydeck keypad({.manufacturer = "crljn.labs", .product = "crljn-board", .canWakeComputer = true},  //
+               sw1, sw2, sw3, sw4, sw5, sw6, knob, screen);
 
-  display.begin();
-  screen.begin();
-  display.fadeBrightness(kBacklightBrightness, kBacklightFadeMs);
+void setup() { keypad.begin(); }
 
-  keypadHid.begin();
-
-  encoder.onRotate([](int8_t direction, int32_t position) {
-    screen.onEncoderRotate(direction, position);
-    keypadHid.addRotation(direction);
-  });
-  encoder.onButton([](bool pressed) {
-    screen.onEncoderButton(pressed);
-    keypadHid.setEncoderButton(pressed);
-  });
-  encoder.begin();
-
-  switches.onEvent([](uint8_t index, bool pressed) {
-    screen.onSwitch(index, pressed);
-    keypadHid.setKey(index, pressed);
-  });
-  switches.begin();
-
-  settings.begin(kSettingsNamespace, false);
-  const uint8_t fast = settings.getUChar(kFastButtonsKey, 0);
-  applyFastButtons(fast);
-  keypadHid.setFastButtons(fast);
-
-  Serial.printf("keypad ready: %u switches, 1 encoder, %dx%d display\n", Switches::count(),
-                display.width(), display.height());
-}
-
-void loop() {
-  encoder.update();
-  switches.update();
-  screen.update();
-  keypadHid.update();
-
-  uint8_t fast = 0;
-  if (keypadHid.takeFastButtons(fast)) {
-    applyFastButtons(fast);
-    settings.putUChar(kFastButtonsKey, fast);
-  }
-}
+void loop() { keypad.loop(); }

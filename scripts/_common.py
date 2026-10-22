@@ -197,6 +197,88 @@ def default_environment() -> str:
     raise AssertionError("unreachable")
 
 
+# --- the anydeck library ----------------------------------------------------
+# Everything between the keypad and the PC lives in the anydeck library, which
+# platformio.ini names in lib_deps. PlatformIO installs a git dependency once
+# and keeps that commit until told otherwise, so a build would go on using
+# whatever was fetched first. Asking it to update before every build keeps the
+# keypad on the library's newest commit.
+
+ANYDECK_LIBRARY = "anydeck-library"
+
+
+def anydeck_library_spec(environment: str) -> str | None:
+    """The lib_deps entry that names the anydeck library, as written."""
+    parser = configparser.ConfigParser(interpolation=None, inline_comment_prefixes=(";",))
+    parser.read(PLATFORMIO_INI)
+    for section in (f"env:{environment}", "env"):
+        for line in parser.get(section, "lib_deps", fallback="").splitlines():
+            if ANYDECK_LIBRARY in line:
+                return line.strip()
+    return None
+
+
+def update_anydeck_library(environment: str) -> None:
+    """Fetches the anydeck library's newest commit, if it comes from git.
+
+    A linked folder (symlink://) is always current, and a pinned version
+    (...git#v0.2.0) stays where it is pinned - neither is touched. Offline the
+    build goes on with the library already installed.
+    """
+    spec = anydeck_library_spec(environment)
+    if spec is None:
+        return
+    if spec.startswith(("symlink://", "file://")):
+        info(f"anydeck library: linked, {spec}")
+        return
+    if "#" in spec:
+        info(f"anydeck library: pinned, {spec}")
+        return
+    info("anydeck library: fetching its newest commit")
+    project = ["--project-dir", str(PROJECT_DIR), "--environment", environment]
+    # Installed first: an update finds nothing to update before the first
+    # install, or after lib_deps named the library differently.
+    commands = (
+        [pio_executable(), "pkg", "install", *project, "--silent"],
+        [pio_executable(), "pkg", "update", *project, "--library", spec,
+         "--no-save", "--skip-dependencies", "--silent"],
+    )
+    for command in commands:
+        print(f"    $ {' '.join(command)}")
+        if subprocess.run(command, check=False).returncode != 0:
+            info("anydeck library: could not update it - building with the one installed")
+            return
+    info(f"anydeck library: {anydeck_library_version(environment)}")
+
+
+def anydeck_library_version(environment: str) -> str:
+    """Which anydeck library a build used: its version and commit, or the
+    folder it is linked from."""
+    libdeps = PROJECT_DIR / ".pio" / "libdeps" / environment
+    for link in libdeps.glob("*.pio-link"):
+        if ANYDECK_LIBRARY in link.name:
+            try:
+                return "linked: " + json.loads(link.read_text()).get("spec", {}).get("uri", "")
+            except ValueError:
+                return "linked"
+    for manifest in libdeps.glob("*/library.json"):
+        try:
+            package = json.loads(manifest.read_text())
+        except ValueError:
+            continue
+        if package.get("name") != "anydeck":
+            continue
+        version = str(package.get("version", ""))
+        # Fetched from git, it is a checkout: the commit says more than the
+        # version, which only changes when somebody raises it.
+        commit = subprocess.run(
+            ["git", "-C", str(manifest.parent), "rev-parse", "--short", "HEAD"],
+            check=False, capture_output=True, text=True,
+        ).stdout.strip()
+        return f"{version}+sha.{commit}" if commit else version
+    return ""
+
+
 def pio_core_dir() -> Path:
     try:
         output = subprocess.run(
@@ -594,6 +676,7 @@ def write_manifest(directory: Path, build_id: str, environment: str,
         "version": version,
         "environment": environment,
         "commit": git_commit(),
+        "anydeck_library": anydeck_library_version(environment),
         "chip": CHIP,
         "built_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "merged_image": {"file": MERGED_IMAGE, "offset": "0x0"},

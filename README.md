@@ -12,20 +12,39 @@ key does is up to the program on the PC,
 
 - What the keypad says over USB, byte for byte: [docs/hid.md](docs/hid.md)
 
+The firmware itself is short: `src/main.cpp` names the keypad's parts, and the
+[anydeck library](https://github.com/crljnlabs/anydeck-library) does
+everything between them and the PC. PlatformIO fetches it from GitHub.
+
 ## What the firmware does
 
 - Reads the six keys and the encoder, and reports them to the PC.
 - Tells the PC what it is made of, the display included.
-- Shows a status screen of its own: the encoder's position and last direction,
-  and which keys are held.
+- Plays anydeck's intro on the display at the start, then shows what the PC
+  sends, put together from pieces.
+- Shows a status screen of its own while the PC does not draw: the encoder's
+  position and last direction, and which keys are held.
+- Sleeps: the display after 5 minutes on its own screen, the whole keypad
+  while the Mac sleeps; a key wakes the Mac if the Mac allows it.
 - Logs over the same USB cable, as a serial port.
-
-Not yet: showing on the display what the PC sends.
 
 ## Building and flashing
 
 Needs Python 3 and PlatformIO (`pio`). Everything else - the toolchain, the
-libraries, esptool - PlatformIO fetches itself on the first build.
+anydeck library, TFT_eSPI, esptool - PlatformIO fetches itself on the first
+build. Before every build the scripts fetch the anydeck library's newest
+commit, and the build's `manifest.json` says which one went in.
+
+Working on the library at the same time: clone it next to this repository and
+link it instead, so every change there is in the next build here.
+
+```bash
+git clone https://github.com/crljnlabs/anydeck-library.git ../anydeck-library
+```
+
+```ini
+lib_deps = symlink://../anydeck-library
+```
 
 ```bash
 python3 scripts/flash.py
@@ -59,8 +78,11 @@ them. Nothing is published yet.
 ## Technology
 
 - C++ with PlatformIO and the Arduino framework, for the ESP32-S3 Super Mini
-  (module ESP32-S3FH4R2: 4 MB flash, 2 MB PSRAM). The platform is pinned,
-  `espressif32@6.12.0` with Arduino core 2.0.17, so a build is reproducible.
+  (module ESP32-S3FH4R2: 4 MB flash, 2 MB PSRAM). The platform is pioarduino's,
+  pinned to Arduino core 3.3.12 (ESP-IDF 5.5.5), so a build is reproducible.
+  PlatformIO's own platform ends at core 2.0.17, whose USB driver dropped the
+  keypad off the bus while reports and display packets crossed;
+  `platformio.ini` says more.
 - USB through TinyUSB (`ARDUINO_USB_MODE=0`), which a vendor-defined HID
   interface needs; the serial port sits next to it on the same device.
 - The display, an ST7789 panel, through TFT_eSPI, configured only through build
@@ -70,7 +92,7 @@ them. Nothing is published yet.
 
 | | |
 |---|---|
-| `src/` | the firmware |
+| `src/main.cpp` | the firmware: which parts the keypad has, on which pins |
 | `include/pins.h` | every GPIO the firmware touches, and why the pins do not match the schematic's net names |
 | `platformio.ini` | the board, the USB setup and the display configuration |
 | `docs/` | the USB protocol |

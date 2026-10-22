@@ -17,7 +17,7 @@ Status in this firmware:
 | report `0x01`, input | sent |
 | report `0x10`, capability block | answered |
 | report `0x11`, fast buttons | answered and taken, kept in flash |
-| report `0x20`, display data | declared, and ignored when it arrives |
+| report `0x20`, display data | received: pieces, places, show, brightness, own screen |
 
 What anydeck does with each of them today is in the contract's last section.
 
@@ -27,8 +27,8 @@ What anydeck does with each of them today is in the contract's last section.
 |---|---|---|
 | vendor id | `0x303A` | the Arduino core's `esp32s3` variant |
 | product id | `0x1001` | the Arduino core's `esp32s3` variant |
-| manufacturer | `crljn.labs` | `USB_MANUFACTURER` in `platformio.ini` |
-| product | `crljn-board` | `USB_PRODUCT` in `platformio.ini` |
+| manufacturer | `crljn.labs` | `src/main.cpp` |
+| product | `crljn-board` | `src/main.cpp` |
 | serial number | the chip's MAC address | the Arduino core's default |
 
 The product and the manufacturer are set by this project. The serial number
@@ -129,7 +129,8 @@ window, although the application collection around it was vendor-defined:
 macOS publishes the usage of every application *and* every physical collection,
 and its keyboard driver matches on them. Vendor usages `0x02` and `0x03` keep
 it out, and cost nothing - what an element is follows from the items inside a
-collection, never from its label. `src/keypad_hid.cpp` has the full account.
+collection, never from its label. The anydeck library's `src/anydeck/Layout.cpp`
+has the full account.
 
 ### Listed three times on macOS
 
@@ -175,7 +176,7 @@ On the wire, after the report id:
 
 ```
 01 02 01 01                                     device info, 2 bytes
-02 0D 18 01 F0 00 01 00 03 0E 46 01 17 01 03    display, 13 bytes
+02 0D 18 01 F0 00 01 00 03 2B 46 01 17 01 1F    display, 13 bytes
 00 00                                           end of list
 ```
 
@@ -191,7 +192,7 @@ On the wire, after the report id:
 | | 7 | corner radius in pixels | `43` |
 | | 8..9 | physical width, tenths of a millimetre | `326` |
 | | 10..11 | physical height, tenths of a millimetre | `279` |
-| | 12 | capability flags | `0b0000_0011` |
+| | 12 | capability flags | `0b0010_0001` |
 
 All 13 bytes of the display entry are sent, so no default applies anywhere.
 
@@ -205,11 +206,9 @@ orientation. The corner radius of `43` was measured from a photo of the panel -
 all four corners came out at 42 to 44 px - and confirmed on the device, where an
 arc of that radius ran along the edge of the glass (`Display::kCornerRadius`).
 
-The flags say the backlight can be dimmed (bit 0) and the display takes full
-frames (bit 1). Both are true of the panel - the firmware dims the backlight
-itself, through PWM - and neither can be reached from the PC yet: there is no
-command for the brightness, and nothing receives a frame. The flags describe
-the display as it is; using them is the display feed's work.
+The flags say: the backlight can be dimmed (bit 0) and the display puts pieces
+together (bit 5, report `0x20` below). Bits 1 to 4 stood for pixel rectangles,
+which the display no longer takes; they are 0.
 
 ## Report 0x11 — fast buttons, feature, read and written by the PC
 
@@ -229,22 +228,67 @@ no such setting: its state machine needs no waiting.
 
 A SET_REPORT takes effect at once - a GET_REPORT straight after it answers with
 what was set, bit 7 cleared - and the main loop applies it to the inputs and
-stores it in flash, NVS namespace `keypad`, key `fast-buttons`. Written only
+stores it in flash, NVS namespace `anydeck`, key `fast-buttons`, one byte. Written only
 when the PC sends it, so the flash does not wear; read at every start, so the
 keypad keeps the setting after a power cut, with or without a PC.
 
 ## Report 0x20 — display data, output, PC to device
 
-Declared as 63 bytes per packet. The firmware ignores whatever arrives on it,
-and the framing for pixel data and commands is not specified yet; specifying it
-is part of building the display feed. A full frame of this display, 280 x 240 in
-RGB565, is 134400 bytes, so it will have to arrive in pieces.
+The PC draws, the device puts together. The PC sends pieces - pictures with
+transparency, already drawn - and where each goes; the device keeps them and
+lays them over each other. It knows nothing of what a piece shows: a moved
+piece is a new place, a faded one a new opacity, a bar's value the share of its
+fill to show. Every packet is one report `0x20` of 63 bytes; the first byte
+says what it is (the anydeck library's `src/anydeck/DisplayFeed.h`):
+
+| Byte 0 | Packet | Payload |
+|---|---|---|
+| `0x02` | data | number within the piece, from 0 (2), then up to 60 bytes |
+| `0x03` | show | what changed since the last show appears at once |
+| `0x04` | brightness | display (1), 0..255 |
+| `0x05` | own screen | the device draws its status screen again |
+| `0x06` | clear | display (1): every piece gone |
+| `0x07` | piece | display, id (1 each), x, y (2 each, signed), width, height (2 each), alpha (1: `0` none, `1` one byte per pixel), length of the colours, length of the alpha (4 each) |
+| `0x08` | place | display, id (1 each), x, y (2 each, signed), opacity (1, 0..255), reveal (1), amount (2, 0..65535), start, sweep (2 each, degrees, signed), centre x, centre y (2 each, from the piece's corner) |
+| `0x09` | remove | display, id (1 each) |
+
+- All numbers little endian. Colours are RGB565, PackBits on whole pixels: a
+  header byte n of 0..127 is followed by n + 1 literal pixels, 128..255 by one
+  pixel repeated n - 126 times. The alpha follows the colours, PackBits the
+  same way on bytes. A value or a run may span two packets.
+- Ids 0 to 63. Pieces are drawn in the order of their ids, 0 at the bottom; the
+  PC sends the background as piece 0. A piece sent again under its id keeps its
+  opacity and share and takes the new x and y. A place for an id that holds no
+  piece is ignored.
+- Reveal, the share that shows (amount / 65535 of it): `0` all, `1` from the
+  left, `2` from the bottom, `3` from the right, `4` from the top - rounded to
+  whole rows or columns, (size x amount + 32767) / 65535 of them - and `5`
+  clockwise from `start` over `sweep` degrees around the centre, by the angle
+  of each pixel's middle (0° points right, angles grow clockwise).
+- Opacity multiplies a pixel's alpha: alpha x opacity / 255. A pixel is laid
+  over what is below it per RGB565 component.
+- A data packet whose number is not the next one, data that runs out before
+  the pixels do, or no memory for the piece: the piece is not taken, what was
+  under its id stays.
+- Pieces live in PSRAM, decoded on the USB task. The main loop puts together
+  the area that changed into a frame buffer of 134400 bytes at "show" and
+  pushes it to the panel row by row. Memory of a replaced piece is freed by the
+  main loop, once nothing draws with it. Until the first "show", and after
+  "own screen", the status screen is drawn as before.
+- Unknown commands are ignored.
+- Arrival: hidapi writes over the interrupt OUT endpoint (64 bytes, 1 ms),
+  which the core hands to `_onOutput`. A SET_REPORT over the control pipe
+  arrives in `_onSetFeature`; both go to the same place.
+
+At one packet per millisecond a full background of flat areas is well under a
+second, a photo about two; a place is one packet.
 
 ## See also
 
 - anydeck's device contract, `docs/device-protocol.md` in the anydeck
   repository: the rules this file follows, the capability block's format with
   all its defaults, and how anydeck finds and reads a device.
-- `src/keypad_hid.cpp`: the descriptor, the capability block and report `0x11`
-  as the firmware builds them; `src/debounced_input.h` for the two ways a
-  button is debounced.
+- The anydeck library (`../anydeck-library`), which builds all of this from
+  the parts `src/main.cpp` names: `src/anydeck/Layout.cpp` the descriptor,
+  `src/anydeck/Device.cpp` the reports, the capability block and report
+  `0x11`, `src/anydeck/DebouncedInput.h` the two ways a button is debounced.
