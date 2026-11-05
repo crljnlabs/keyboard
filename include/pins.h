@@ -24,7 +24,7 @@
 //                                       pin the reversal left in place)
 //
 // The board should be corrected in the next PCB revision; until then this
-// header, and the TFT_* macros in platformio.ini that mirror it, compensate.
+// header compensates.
 // Do not "fix" these values back to the schematic net names.
 
 #pragma once

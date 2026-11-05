@@ -31,7 +31,7 @@ everything between them and the PC. PlatformIO fetches it from GitHub.
 ## Building and flashing
 
 Needs Python 3 and PlatformIO (`pio`). Everything else - the toolchain, the
-anydeck library, TFT_eSPI, esptool - PlatformIO fetches itself on the first
+anydeck library, LovyanGFX, esptool - PlatformIO fetches itself on the first
 build. Before every build the scripts fetch the anydeck library's newest
 commit, and the build's `manifest.json` says which one went in.
 
@@ -85,8 +85,8 @@ them. Nothing is published yet.
   `platformio.ini` says more.
 - USB through TinyUSB (`ARDUINO_USB_MODE=0`), which a vendor-defined HID
   interface needs; the serial port sits next to it on the same device.
-- The display, an ST7789 panel, through TFT_eSPI, configured only through build
-  flags in `platformio.ini`.
+- The display, an ST7789 panel, through the anydeck library and LovyanGFX;
+  its panel, size and pins are in `src/main.cpp`.
 
 ## Where things are
 
@@ -94,7 +94,7 @@ them. Nothing is published yet.
 |---|---|
 | `src/main.cpp` | the firmware: which parts the keypad has, on which pins |
 | `include/pins.h` | every GPIO the firmware touches, and why the pins do not match the schematic's net names |
-| `platformio.ini` | the board, the USB setup and the display configuration |
+| `platformio.ini` | the board and the USB setup |
 | `docs/` | the USB protocol |
 | `kicad/` | schematic, board, 3D model, gerbers and an interactive BOM |
 | `scripts/` | building, flashing and publishing |
