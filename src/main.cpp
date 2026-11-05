@@ -1,8 +1,7 @@
 // The crljn keypad: six keys, a rotary encoder with a push button and a 1.69"
 // display, as an anydeck device. Everything between the keypad and the PC is
 // the anydeck library's (../anydeck-library); this file only says what the
-// keypad is made of. The display's driver and SPI pins are TFT_eSPI build
-// flags in platformio.ini.
+// keypad is made of.
 
 #include <Arduino.h>
 #include <Anydeck.h>
@@ -32,9 +31,21 @@ anydeck::RotaryEncoder knob(pins::kEncoderB, pins::kEncoderA, pins::kEncoderButt
 // The glass hides the corners: their rounding has a radius of 43 px,
 // measured from a photo of the panel (all four corners 42-44 px). The visible
 // area is 32.6 by 27.9 mm in this orientation.
+//
+// The panel is 240 x 280 as sold, portrait; it sits centred in the ST7789's
+// 240 x 320 memory, which the library works out itself. The module has no
+// MISO line - nothing is ever read back.
 anydeck::Display screen({
-    .rotation = 3,
+    .panel = anydeck::Panel::kSt7789,
+    .width = 240,
+    .height = 280,
+    .pins = {.clock = pins::kTftSclk,
+             .data = pins::kTftMosi,
+             .dc = pins::kTftDc,
+             .cs = pins::kTftCs,
+             .reset = pins::kTftReset},
     .backlightPin = pins::kTftBacklight,
+    .rotation = 3,
     .cornerRadius = 43,
     .physicalWidthTenthMm = 326,
     .physicalHeightTenthMm = 279,

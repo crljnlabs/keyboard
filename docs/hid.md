@@ -197,9 +197,9 @@ On the wire, after the report id:
 All 13 bytes of the display entry are sent, so no default applies anywhere.
 
 Width and height are the panel as the firmware draws on it, after rotation `3`.
-The panel itself is 240 x 280 (`TFT_WIDTH` and `TFT_HEIGHT` in
-`platformio.ini`), and 280 x 240 is the same panel lying on its side; the values
-come from `Display::kWidth` and `Display::kHeight`.
+The panel itself is 240 x 280 (`width` and `height` of the display in
+`src/main.cpp`), and 280 x 240 is the same panel lying on its side; the values
+come from `Display::width()` and `Display::height()`.
 
 The physical size is the 1.69 inch panel's visible area, 32.6 by 27.9 mm in this
 orientation. The corner radius of `43` was measured from a photo of the panel -
